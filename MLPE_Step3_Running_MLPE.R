@@ -17,6 +17,9 @@ library(GeNetIt)
 library(tidyverse)
 library(ggradar)
 library(r2glmm)
+library(sjPlot)
+library(sjlabelled)
+library(sjmisc)
 
 #load functions:
 max.r <- function(x){
@@ -138,9 +141,8 @@ write.csv(as.data.frame(MA$coefficients), row.names=TRUE, file="steerei/MLPE_REL
 
 
 
-##### 3. SIGNIFICANCE OF BEST MODELS ---------------------------------------------------
+##### 3. SIGNIFICANCE OF BEST MODELS -------------------------------------------
 #A. Best model for REL:
-
 best_models[1,]
 names(mlpe_steerei)
 
@@ -175,7 +177,7 @@ write.csv(as.data.frame(compare_bestmodels), file="LTR_BestModels_steerei.csv", 
 
 
 
-##### 4. COEFFICIENTS OF BEST MODELS ---------------------------------------------------
+##### 4. COEFFICIENTS OF BEST MODELS ---------------------------------------------
 #A. Best model with REML:
 best_models[1,]
 names(mlpe_steerei)
@@ -231,32 +233,39 @@ write.csv(as.data.frame(r2_steerei), row.names=TRUE, file="BestModel_PartialR2_R
 
 
 ######### 5. ESTIMATES GRAPHS -----------------------------------------------------
-#A, Calculated decorrelated Relatedness:
-Ajusted_bestmodel
-goo1 = pr.norm.singlecov(Ajusted_bestmodel)
-
-#A. PET:
-df = data.frame(goo1, covar=mlpe_steerei$PET)
-
-PET_graph =
-ggplot(df, aes(x = covar)) +
-  geom_point(aes(y=pr.fixed), alpha=0.50, color= 'black') +
-  geom_point(aes(y=pr.POP), alpha=0.50, color='red') +
-  geom_smooth(aes(y=fit), method='lm', color="black") +
-  ylab("Relatedness (Decorrelated)") +
-  xlab("PET Dissimilarity") +
-  theme_bw() +
+#A. Estimates in Forest Graph:
+pdf("Estimates_ForestGraph_steerei.pdf", onefile = T)
+plot_model(Ajusted_bestmodel,
+           type = "est",
+           show.values = TRUE,
+           value.offset = .4,
+           value.size = 5,
+           dot.size = 5,
+           line.size = 0.5,
+           ci.style = "whisker",
+           vline.color = "gray",
+           show.data = T,
+           show.intercept = F,
+           width = 0.5) +theme_bw() +
   theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
         axis.title.x = element_text(size=15, color = "black", face = "bold"))
-
-## Save
-pdf("./PET_Estimates_steerei.pdf")
-PET_graph
 dev.off()
 
+#A. Slopes and Resdiuals by single predictors:
+#The main purpose of these plots is to check whether the relationship between outcome (or residuals) and a predictor is roughly linear or not. Since the plots are based on a simple linear mixed regression with only one model predictor at the moment, the slopes (i.e. coefficients) may differ from the coefficients of the complete model.
 
-#A. PET:
+#A1. PET Dissimilarity
+PET_Model_STE = lme(RELgen ~ PET,
+                            random = ~1|POP,
+                            correlation = corMLPE(form = ~ from_ID + to_ID|POP),
+                            data = mlpe_steerei,
+                            method = "REML")
+
+#Calculated decorrelated Relatedness:
+PET_Model_STE
+goo1 = pr.norm.singlecov(PET_Model_STE)
 df = data.frame(goo1, covar=mlpe_steerei$PET)
+head(df)
 
 PET_graph =
   ggplot(df, aes(x = covar)) +
@@ -278,8 +287,18 @@ dev.off()
 
 
 
-#B. Precipitation:
+#B. Precipitation Dissimilarity:
+Precip_Model_STE = lme(RELgen ~ precipitation,
+                    random = ~1|POP,
+                    correlation = corMLPE(form = ~ from_ID + to_ID|POP),
+                    data = mlpe_steerei,
+                    method = "REML")
+
+#Calculated decorrelated Relatedness:
+Precip_Model_STE
+goo1 = pr.norm.singlecov(Precip_Model_STE)
 df = data.frame(goo1, covar=mlpe_steerei$precipitation)
+head(df)
 
 Preci_graph =
   ggplot(df, aes(x = covar)) +
@@ -301,7 +320,17 @@ dev.off()
 
 
 #C. River Distance:
+River_Model_STE = lme(RELgen ~ riverdistance,
+                       random = ~1|POP,
+                       correlation = corMLPE(form = ~ from_ID + to_ID|POP),
+                       data = mlpe_steerei,
+                       method = "REML")
+
+#Calculated decorrelated Relatedness:
+River_Model_STE
+goo1 = pr.norm.singlecov(River_Model_STE)
 df = data.frame(goo1, covar=mlpe_steerei$riverdistance)
+head(df)
 
 River_graph =
   ggplot(df, aes(x = covar)) +
@@ -324,6 +353,17 @@ dev.off()
 
 
 #D. Euclidean Distance:
+Eucli_Model_STE = lme(RELgen ~ eucl_dist,
+                      random = ~1|POP,
+                      correlation = corMLPE(form = ~ from_ID + to_ID|POP),
+                      data = mlpe_steerei,
+                      method = "REML")
+
+#Calculated decorrelated Relatedness:
+Eucli_Model_STE
+goo1 = pr.norm.singlecov(Eucli_Model_STE)
+df = data.frame(goo1, covar=mlpe_steerei$riverdistance)
+head(df)
 df = data.frame(goo1, covar=mlpe_steerei$eucl_dist)
 
 Eucli_graph =
@@ -435,8 +475,36 @@ Full_model_si_rel = lme(mlpe_formula_rel_si,
                         correlation = corMLPE(form = ~ from_ID + to_ID|POP),
                         data = mlpe_simonsi,
                         method = "ML")
+Full_model_si_rel
 
-#B. Run dredge function:
+#test gls because we have 1 population:
+Full_model_si_rel2 = gls(mlpe_formula_rel_si,
+                        correlation = corMLPE(form = ~ from_ID + to_ID),
+                        data = mlpe_simonsi,
+                        method = "ML")
+
+Full_model_si_rel2
+
+#B. Comparing LME and GLS results:
+#LME:
+Allmodels = dredge(Full_model_si_rel, rank = "AICc", m.lim=c(0, 9), extra= c(max.r))
+NCM = get.models(Allmodels, subset = max.r<=0.7)
+BM = model.sel(NCM)
+impor_uncor_lme = importance(BM)
+
+#GLS
+Allmodels = dredge(Full_model_si_rel2, rank = "AICc", m.lim=c(0, 9), extra= c(max.r))
+NCM = get.models(Allmodels, subset = max.r<=0.7)
+BM = model.sel(NCM)
+impor_uncor_gls = importance(BM)
+
+#verify number of models and contribution:
+impor_uncor_lme
+impor_uncor_gls
+
+#Same results so we kept LME to compare to P. steerei
+
+#B. Run dredge function for lme:
 #specifying the number of predictor variables (max_var) and including the max.r function
 Allmodels = dredge(Full_model_si_rel, rank = "AICc", m.lim=c(0, 9), extra= c(max.r))
 length(Allmodels[,1]) # 128models
@@ -570,17 +638,48 @@ write.csv(as.data.frame(r2_simonsi), row.names=TRUE, file="BestModel_PartialR2_R
 
 
 ######### 5b. ESTIMATES GRAPHS -----------------------------------------------------
-#A, Calculated decorrelated Relatedness:
-Ajusted_bestmodel
-goo1 = pr.norm.singlecov(Ajusted_bestmodel)
+#A. Estimates in Forest Graph. In this case need to be GLS:
+Ajusted_bestmodel_gls =gls(RELgen ~ PET +wetlands_VH,
+                       correlation = corMLPE(form = ~ from_ID + to_ID),
+                       data = mlpe_simonsi,
+                       method = "REML") #
 
-#A. PET:
+pdf("Estimates_ForestGraph_simonsi.pdf", onefile = T)
+plot_model(Ajusted_bestmodel_gls,
+           type = "est",
+           show.values = TRUE,
+           value.offset = .4,
+           value.size = 5,
+           dot.size = 5,
+           line.size = 0.5,
+           ci.style = "whisker",
+           vline.color = "gray",
+           show.data = T,
+           show.intercept = F,
+           width = 0.5) +theme_bw() +
+  theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
+        axis.title.x = element_text(size=15, color = "black", face = "bold"))
+dev.off()
+
+#A. Slopes and Resdiuals by single predictors:
+#The main purpose of these plots is to check whether the relationship between outcome (or residuals) and a predictor is roughly linear or not. Since the plots are based on a simple linear mixed regression with only one model predictor at the moment, the slopes (i.e. coefficients) may differ from the coefficients of the complete model.
+
+#A1. PET Dissimilarity
+PET_Model_SIM = gls(RELgen ~ PET,
+                    correlation = corMLPE(form = ~ from_ID + to_ID),
+                    data = mlpe_simonsi,
+                    method = "REML") #
+
+#Calculated decorrelated Relatedness:
+PET_Model_SIM
+goo1 = pr.norm.singlecov(PET_Model_SIM)
 df = data.frame(goo1, covar=mlpe_simonsi$PET)
+head(df)
 
 PET_graph =
   ggplot(df, aes(x = covar)) +
-  geom_point(aes(y=pr.fixed), alpha=0.50, color= 'black') +
-  #geom_point(aes(y=pr.POP), alpha=0.50, color='red') +
+  geom_point(aes(y=pr), alpha=0.50, color= 'black') +
+  # geom_point(aes(y=pr.POP), alpha=0.50, color='red') +
   geom_smooth(aes(y=fit), method='lm', color="black") +
   ylab("Relatedness (Decorrelated)") +
   xlab("PET Dissimilarity") +
@@ -596,12 +695,22 @@ PET_graph
 dev.off()
 
 
-#B. Habitat:
+
+#A2. Habitat Resistance
+HAB_Model_SIM = gls(RELgen ~ wetlands_VH,
+                    correlation = corMLPE(form = ~ from_ID + to_ID),
+                    data = mlpe_simonsi,
+                    method = "REML") #
+
+#Calculated decorrelated Relatedness:
+HAB_Model_SIM
+goo1 = pr.norm.singlecov(HAB_Model_SIM)
 df = data.frame(goo1, covar=mlpe_simonsi$wetlands_VH)
+head(df)
 
 HAB_graph =
   ggplot(df, aes(x = covar)) +
-  geom_point(aes(y=pr.fixed), alpha=0.50, color= 'black') +
+  geom_point(aes(y=pr), alpha=0.50, color= 'black') +
   # geom_point(aes(y=pr.POP), alpha=0.50, color='red') +
   geom_smooth(aes(y=fit), method='lm', color="black") +
   ylab("Relatedness (Decorrelated)") +
@@ -617,27 +726,36 @@ pdf("./HAB_Estimates_simonsi.pdf")
 HAB_graph
 dev.off()
 
-#C. Euclidean Distance:
-df = data.frame(goo1, covar=mlpe_simonsi$eucl_dist)
 
-Eucli_graph =
+#A3. Eucliadian Disatnce
+EUC_Model_SIM = gls(RELgen ~ eucl_dist,
+                    correlation = corMLPE(form = ~ from_ID + to_ID),
+                    data = mlpe_simonsi,
+                    method = "REML") #
+
+#Calculated decorrelated Relatedness:
+EUC_Model_SIM
+goo1 = pr.norm.singlecov(EUC_Model_SIM)
+df = data.frame(goo1, covar=mlpe_simonsi$eucl_dist)
+head(df)
+
+EUC_graph =
   ggplot(df, aes(x = covar)) +
-  geom_point(aes(y=pr.fixed), alpha=0.50, color= 'black') +
+  geom_point(aes(y=pr), alpha=0.50, color= 'black') +
   # geom_point(aes(y=pr.POP), alpha=0.50, color='red') +
   geom_smooth(aes(y=fit), method='lm', color="black") +
   ylab("Relatedness (Decorrelated)") +
-  xlab("Euclidean (Geographic) Distance") +
+  xlab("Euclidean (Geographic) Resistance") +
   theme_bw() +
   theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
         axis.title.x = element_text(size=15, color = "black", face = "bold"))
 
-Eucli_graph
+EUC_graph
 
 ## Save
-pdf("./Eucli_Estimates_simonsi.pdf")
-Eucli_graph
+pdf("./Euclidean_Estimates_simonsi.pdf")
+EUC_graph
 dev.off()
-
 
 
 
@@ -696,4 +814,4 @@ plot_si
 dev.off()
 
 
-#END  
+#END
