@@ -1,7 +1,7 @@
 ### LANDSCAPE GENOMICS PIPELINE IN R ###
 ### PART 3 - ISOLATION BY RESISTANCE USING MLPE MODELS ###
 
-Script in 3 steps to run Isolation-by-Resistance (IBR) using Maximum‐likelihood population‐effects (MLPE) mixed models:
+Scripts in 3 steps to run Isolation-by-Resistance (IBR) using Maximum‐likelihood population‐effects (MLPE) mixed models:
 
   STEP 1: Creating distances matrices to represent resistance values based on:
   1. Euclidian Distance (Geographic Distance)
