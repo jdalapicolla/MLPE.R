@@ -12,7 +12,9 @@ Scripts in 3 steps to run Isolation-by-Resistance (IBR) using Maximum‐likeliho
  
  STEP 2: Organizing and choose Distances Matrices
  
- STEP 3: Running Mixed models to estimate Isolation-by-Resistance (IBR) between individuals
+ STEP 3: Running Mixed models to estimate Isolation-by-Resistance (IBR) between individuals using lme()
+ 
+ STEP 4: Running Mixed models to estimate Isolation-by-Resistance (IBR) between individuals using gls()
  
  
 ## PART 1 - GENETIC STRUCTURE AND GENETIC DIVERSITY https://github.com/jdalapicolla/LanGen_pipeline_version2
