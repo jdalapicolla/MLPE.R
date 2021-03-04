@@ -1,5 +1,5 @@
 #####################  LANDSCAPE GENOMICS TUTORIAL   ##########################
-##################   MLPE - STEP 01: DISTANCE MATRICES   ######################
+##################   MLPE - STEP 02: SELECTING MATRICES   ######################
 
 ### Script prepared by Jeronymo Dalapicolla, Jamille C. Veiga, Carolina S. Carvalho, Luciana C. Resende-Moreira, and Rodolfo Jaffé ###
 
@@ -10,11 +10,15 @@
 
 #Load packages:
 library(tidyverse)
+library(GeNetIt)
 library(reshape2)
 library(corrplot)
 library(r2vcftools)
+library(MuMIn)
 library(corMLPE)
 library(nlme)
+library(snow) ## NEW
+library(parallel) ## NEW
 
 
 #Turn off scientific notation
@@ -63,11 +67,15 @@ mt_all[upper.tri(mt_all, diag = T)] = NA
 mt_all
 
 #D. Converting distance matrix into data frame for analyses:
-dmat_st = mt_all %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","RELgen"))
+#dmat_st = mt_all %>%
+#  melt %>%
+#  na.omit %>%
+#  arrange(., Var1) %>%
+#  setNames(c("X1", "X2","RELgen"))
+dmat_st = dmatrix.df(mt_all)
+head(dmat_st)
+colnames(dmat_st) = c("X1", "X2","RELgen")
+
 
 #E. Verify for NA or 0 values
 head(dmat_st)
@@ -86,11 +94,14 @@ head(pca)
 pca[upper.tri(pca, diag = T)] = NA
 
 #H. Converting distance matrix into data frame for analyses:
-pca = pca %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","PCAgen"))
+#pca = pca %>%
+#  melt %>%
+#  na.omit %>%
+#  arrange(., Var1) %>%
+#  setNames(c("X1", "X2","PCAgen"))
+pca = dmatrix.df(pca)
+head(pca)
+colnames(pca) = c("X1", "X2","PCAgen")
 
 #I. Verify for NA or 0 values
 head(pca)
@@ -255,7 +266,12 @@ write.csv(as.data.frame(cbind(snps_neutral@meta$ind_ID,coverage_ind)), "./Metafi
 
 ##### 5. VARIABLE RANGES -------------------------------------------------------------
 #Variable ranges for all pairwise resistance distances used to run MLPE regression models.
-#Preparing input for ggplot:  
+
+#Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_steerei.csv", row.names = 1)
+head(mlpe_table)
+
+#Preparing input for ggplot:
 df = mlpe_table[5:(length(mlpe_table)-1)] #explanatory variables start in col #5
 df = melt(df)
 head(df)
@@ -276,18 +292,25 @@ dev.off()
 #####6. VARIABLE LINEARITY ---------------------------------------------------------
 ## Assess linearity between response and predictor variables. The graphs show if the slope (trend line) is continually changing; if so, it is not a constant! These variables do not show a linear relationship. With a linear relationship, the slope never changes.
 
+#A. Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_steerei.csv", row.names = 1)
+head(mlpe_table)
+mlpe_table[, 5:15] = as.data.frame(scale(mlpe_table[, 5:15]))
+head(mlpe_table)
+
 names = names(mlpe_table[, 5:ncol(mlpe_table)]) #explanatory variables start in col #5
+
 
 #Using Relatedness:
 for(i in 1:length(names)){
-  pdf(paste0("Linearity/Relatedness_ScatterSmooth_steerei_",names[i],".pdf"), onefile = T)
+  pdf(paste0("Results/steerei/Linearity/Relatedness_ScatterSmooth_steerei_",names[i],".pdf"), onefile = T)
   scatter.smooth(x = mlpe_table[, names[i]], y=mlpe_table[, "RELgen"], ylab = "Relatedness", xlab=colnames(mlpe_table[names[i]]), lpars = list(col = "red", lwd = 3))
   dev.off()
 }
 
 #Using PCA distance:
 for(i in 1:length(names)){
-  pdf(paste0("Linearity/PCA_ScatterSmooth_steerei_",names[i],".pdf"), onefile = T)
+  pdf(paste0("Results/steerei/Linearity/PCA_ScatterSmooth_steerei_",names[i],".pdf"), onefile = T)
   scatter.smooth(x = mlpe_table[, names[i]], y=mlpe_table[, "PCAgen"], ylab = "PCA-Distance", xlab=colnames(mlpe_table[names[i]]), lpars = list(col = "red", lwd = 3))
   dev.off()
 }
@@ -298,34 +321,80 @@ for(i in 1:length(names)){
 
 
 
-
-
-
-
 #####7. UNIVARIATE MODELS ---------------------------------------------------------
-#Univariates Models to choose one Habitat Distance matrix
+#Univariate Models to choose one Habitat Distance matrix
+#A. Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_steerei.csv", row.names = 1)
+head(mlpe_table)
+mlpe_table[, 5:15] = as.data.frame(scale(mlpe_table[, 5:15]))
+head(mlpe_table)
+ 
 
 #A. Using Relatedness and controlling by population structure
-mod_H_r = lme(RELgen ~ wetlands_H, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
+## BUILD FULL MODEL
+form = as.formula(paste("RELgen ~ ", 
+                         paste(names(mlpe_table)[11:14], collapse = " + "), sep = ""))
 
-mod_L_r = lme(RELgen ~ wetlands_L, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
+Fullmodel <- lme(form,
+                 random = ~ 1|POP,
+                 correlation = corMLPE(form = ~ from_ID + to_ID),
+                 data = mlpe_table, method = "ML")
 
-mod_M_r = lme(RELgen ~ wetlands_M, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
 
-mod_VH_r = lme(RELgen ~ wetlands_VH, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
+## CHECK RESIDUALS
+RES <- residuals(Fullmodel, type="normalized")
+FIT <- fitted(Fullmodel)
+plot(FIT, RES) ; abline(0,0, col="red")
+acf(RES)
+
+## ALL VARIABLE PLOTS
+names(mlpe_table)[11:14]
+plot(mlpe_table$wetlands_L, RES) ; abline(0,0, col="red")
+plot(mlpe_table$wetlands_M, RES) ; abline(0,0, col="red")
+plot(mlpe_table$wetlands_H, RES) ; abline(0,0, col="red")
+plot(mlpe_table$wetlands_VH, RES) ; abline(0,0, col="red") 
 
 
-#B. Comparing models:
-uni_models_wet_RELdist_st = MuMIn::model.sel(mod_L_r, mod_M_r, mod_H_r, mod_VH_r, rank= "AICc")
+## RUN PDREDGE 
 
-#C, Save Selected models:
-uni_models_wet_RELdist_st
-write.csv(uni_models_wet_RELdist_st, "Distances/uni_models_wet_RELdist_steerei.csv")
+## Set cluster
+## Run parallelized dredge
+## by Ben Bolker in: https://stackoverflow.com/questions/30261473/mumin-pdredge-error-with-glmer
+
+## Make cluster
+cluster = makeCluster(4, type = "SOCK")  ## also need snow installed
+
+## clusterExport assigns the values on the master R process of the variables named in varlist to variables of the same names in the global environment (aka ‘workspace’) of each node. 
+## The environment on the master from which variables are exported defaults to the global environment.
+clusterExport(cluster,"mlpe_table")
+
+## clusterEvalQ evaluates a literal expression on each cluster node. 
+## It is a parallel version of evalq, and is a convenience function invoking clusterCall
+clusterEvalQ(cluster,
+             c(library(nlme), library(MuMIn), library(corMLPE)))
+
+## Specify the number of predictor variables and including the max.r function
+nrow(mlpe_table) ## 171
+options(na.action = na.fail)
+
+## Run pdredge
+Allmodels <- MuMIn::pdredge(Fullmodel, rank = "AIC", 
+                            m.lim=c(0, 1), cluster)
+
+## SAVE ALL MODELS
+save(Allmodels, file="./Results/steerei/Univariates/Allmodels_univariates_steerei.RData")
+
+### LOAD ALL MODELS
+load(file="./Results/steerei/Univariates/Allmodels_univariates_steerei.RData")
+
+## BEST MODELS
+nrow(Allmodels) ## 5
+BM = model.sel(Allmodels, rank=AIC)
+df = as.data.frame(BM[BM$delta <=2, ])
+df 
+write.csv(df, "Results/steerei/Univariates/Unimodels_habitats_steerei.csv")
 
 #REL-distance: Very-High Resistance
-
-
-
 
 
 
@@ -334,16 +403,26 @@ write.csv(uni_models_wet_RELdist_st, "Distances/uni_models_wet_RELdist_steerei.c
 ##### 8. CORRELATIONS -------------------------------------------------------------
 #perform Correlogram showing the correlation between all resistance distances included as predictors in MLPE regression models. Pearson’s correlation coefficients (r). 
 
+#A. Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_steerei.csv", row.names = 1)
+head(mlpe_table)
+
 ## Check the correlation among enviromental variables
-ALLvars = as.data.frame(mlpe_table[5:(length(mlpe_table)-1)])
+ALLvars = as.data.frame(mlpe_table[5:14])
 head(ALLvars)
 Allvars_cor = cor(ALLvars)
 head(Allvars_cor)
 
-write.csv(Allvars_cor, "Metafiles/Correlation_steerei.csv")
+write.csv(Allvars_cor, "Results/steerei/Correlation/Correlation_steerei.csv")
 
-pdf("Correlogram_steerei.pdf", onefile = T)
-corrplot(Allvars_cor, method="pie")
+## Corplot
+pdf("Results/steerei/Correlation/Correlogram_steerei.pdf", onefile = T)
+corrplot(Allvars_cor, 
+         method="color", 
+         type = "upper", 
+         outline = FALSE, 
+         diag = F,
+         tl.col = "black")
 dev.off()
 
 
@@ -353,6 +432,9 @@ dev.off()
 
 ##### 1b. REARRANGING GENETIC MATRICES FILES ---------------------------------------------
 #Calculated in Pipeline for Genetic Structure #Step 3:
+
+## Clean Global Environment 
+rm(list=ls())
 
 
 ################################################## SIMONSI - SEASONAL FLOODPLAIN FORESTS:
@@ -385,11 +467,14 @@ mt_all[upper.tri(mt_all, diag = T)] = NA
 mt_all
 
 #D. Converting distance matrix into data frame for analyses:
-dmat_st = mt_all %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","RELgen"))
+#dmat_st = mt_all %>%
+#  melt %>%
+#  na.omit %>%
+#  arrange(., Var1) %>%
+#  setNames(c("X1", "X2","RELgen"))
+dmat_st = dmatrix.df(mt_all)
+head(dmat_st)
+colnames(dmat_st) = c("X1", "X2","RELgen")
 
 #E. Verify for NA or 0 values
 head(dmat_st)
@@ -398,7 +483,7 @@ length(dmat_st[,3]) #136
 
 #F. Save rearranged table:
 REL = dmat_st
-write.csv(dmat_st, "Distances/RELgen_organized_steerei.csv")
+write.csv(dmat_st, "Distances/RELgen_organized_simonsi.csv")
 
 #G. PCA distance
 pca = as.matrix(read.csv("Distances/genetic_dist_PCA_BSR_simonsi.csv", row.names = 1))
@@ -406,18 +491,23 @@ head(pca)
 pca[upper.tri(pca, diag = T)] = NA
 
 #H. Converting distance matrix into data frame for analyses:
-pca = pca %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","PCAgen"))
+#pca = pca %>%
+#  melt %>%
+#  na.omit %>%
+#  arrange(., Var1) %>%
+#  setNames(c("X1", "X2","PCAgen"))
+pca = dmatrix.df(pca)
+head(pca)
+colnames(pca) = c("X1", "X2","PCAgen")
+
 
 #I. Verify for NA or 0 values
 head(pca)
 summary(pca)
 length(pca[,3]) #136
 
-
+#J. Save rearranged table:
+write.csv(pca, "Distances/PCAgen_organized_simonsi.csv")
 
 
 
@@ -571,18 +661,24 @@ dev.off()
 ##### 6b. VARIABLE LINEARITY -------------------------------------------------------------
 ## Assess linearity between response and predictor variables. The graphs show if the slope (trend line) is continually changing; if so, it is not a constant! These variables do not show a linear relationship. With a linear relationship, the slope never changes.
 
-names = names(mlpe_table[, 5:(ncol(mlpe_table)-1)]) #explanatory variables start in col #5
+#A. Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_simonsi.csv", row.names = 1)
+head(mlpe_table)
+mlpe_table[, 5:14] = as.data.frame(scale(mlpe_table[, 5:14]))
+head(mlpe_table)
+
+names = names(mlpe_table[, 5:14]) #explanatory variables start in col #5
 
 #Using Relatedness:
 for(i in 1:length(names)){
-  pdf(paste0("Linearity/Relatedness_ScatterSmooth_simonsi_",names[i],".pdf"), onefile = T)
+  pdf(paste0("Results/simonsi/Linearity/Relatedness_ScatterSmooth_simonsi_",names[i],".pdf"), onefile = T)
   scatter.smooth(x = mlpe_table[, names[i]], y=mlpe_table[, "RELgen"], ylab = "Relatedness", xlab=colnames(mlpe_table[names[i]]), lpars = list(col = "red", lwd = 3))
   dev.off()
 }
 
 #Using PCA distance:
 for(i in 1:length(names)){
-  pdf(paste0("Linearity/PCA_ScatterSmooth_simonsi_",names[i],".pdf"), onefile = T)
+  pdf(paste0("Results/simonsi/Linearity/PCA_ScatterSmooth_simonsi_",names[i],".pdf"), onefile = T)
   scatter.smooth(x = mlpe_table[, names[i]], y=mlpe_table[, "PCAgen"], ylab = "PCA-Distance", xlab=colnames(mlpe_table[names[i]]), lpars = list(col = "red", lwd = 3))
   dev.off()
 }
@@ -600,40 +696,159 @@ for(i in 1:length(names)){
 ###### 7b. UNIVARIATE MODELS --------------------------------------------------------------
 #Univariates Models to choose one Habitat Distance
 
-#A. Performing models:
-mod_H_r = lme(RELgen ~ wetlands_H, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
-mod_L_r = lme(RELgen ~ wetlands_L, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
-mod_M_r = lme(RELgen ~ wetlands_M, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
-mod_VH_r = lme(RELgen ~ wetlands_VH, random = ~1|POP, correlation = corMLPE(form = ~ from_ID + to_ID|POP), data = mlpe_table, method = "ML")
+#A. Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_simonsi.csv", row.names = 1)
+head(mlpe_table)
+mlpe_table[, 5:14] = as.data.frame(scale(mlpe_table[, 5:14]))
+head(mlpe_table)
 
-#B. Comparing Models:
-uni_models_wet_RELdist_si = MuMIn::model.sel(mod_L_r, mod_M_r, mod_H_r, mod_VH_r, rank= "AICc")
 
-#C. Save Results:
-uni_models_wet_RELdist_si
-write.csv(uni_models_wet_RELdist_si, "Distances/uni_models_wet_RELdist_simonsi.csv")
+#A. Using Relatedness and controlling by population structure
+## BUILD FULL MODEL
+form = as.formula(paste("RELgen ~ ", 
+                        paste(names(mlpe_table)[11:14], collapse = " + "), sep = ""))
+form
+
+Fullmodel = nlme::gls(form,
+                # random = ~ 1|POP,
+                 correlation = corMLPE(form = ~ from_ID + to_ID),
+                 data = mlpe_table, method = "ML")
+
+
+## CHECK RESIDUALS
+RES <- residuals(Fullmodel, type="normalized")
+FIT <- fitted(Fullmodel)
+plot(FIT, RES) ; abline(0,0, col="red")
+acf(RES) # needed NESTED MLPE
+
+## testing lme, same results
+Fullmodel = nlme::lme(form,
+                      random = ~ 1|POP,
+                      correlation = corMLPE(form = ~ from_ID + to_ID),
+                      data = mlpe_table, method = "ML")
+
+
+## CHECK RESIDUALS
+RES <- residuals(Fullmodel, type="normalized")
+FIT <- fitted(Fullmodel)
+plot(FIT, RES) ; abline(0,0, col="red")
+acf(RES) # needed NESTED MLPE
+
+
+
+## REFIT BEST MODELS WITH NESTED MLPE
+## Sort data so we can see acf better
+mlpe_table2 = mlpe_table[order(mlpe_table$from_ID, mlpe_table$to_ID),]
+
+## Identify which individuals are from same location based on pairwise geographic distance
+ulab <- unique(c(as.character(mlpe_table2$from_ID), as.character(mlpe_table2$to_ID)))
+dis <- matrix(0, length(ulab), length(ulab))
+colnames(dis) <- ulab
+rownames(dis) <- ulab
+dis[1:10, 1:10]
+
+for(i in 1:nrow(mlpe_table2)){
+  dis[mlpe_table2$from_ID[i], mlpe_table2$to_ID[i]] <- 
+    dis[mlpe_table2$to_ID[i],mlpe_table2$from_ID[i]] <- 
+    mlpe_table2$eucl_dist[i]
+  location <- cutree(hclust(as.dist(dis)), h=0) #assign individuals to unique locations
+}
+
+
+## Plot dendogram
+location
+plot(hclust(as.dist(dis)), h=0)
+
+
+## Run nested MLPE --- NOT WORKING FOR LME YET
+Model <- nlme::gls(form,
+                   correlation = corNMLPE2(form = ~ from_ID + to_ID, 
+                                           clusters = location),  data = mlpe_table2, method = "ML")
+
+## Check residuals  
+RES <- residuals(Model, type="normalized")
+FIT <- fitted(Model)
+plot(FIT, RES) ; abline(0,0, col="red")
+acf(RES) #ok
+
+
+
+## ALL VARIABLE PLOTS
+names(mlpe_table2)[11:14]
+plot(mlpe_table2$wetlands_L, RES) ; abline(0,0, col="red")
+plot(mlpe_table2$wetlands_M, RES) ; abline(0,0, col="red")
+plot(mlpe_table2$wetlands_H, RES) ; abline(0,0, col="red")
+plot(mlpe_table2$wetlands_VH, RES) ; abline(0,0, col="red") 
+
+
+## RUN PDREDGE 
+
+## Set cluster
+## Run parallelized dredge
+## by Ben Bolker in: https://stackoverflow.com/questions/30261473/mumin-pdredge-error-with-glmer
+
+## Make cluster
+cluster = makeCluster(4, type = "SOCK")  ## also need snow installed
+
+## clusterExport assigns the values on the master R process of the variables named in varlist to variables of the same names in the global environment (aka ‘workspace’) of each node. 
+## The environment on the master from which variables are exported defaults to the global environment.
+clusterExport(cluster,c("mlpe_table2", "location"))
+
+## clusterEvalQ evaluates a literal expression on each cluster node. 
+## It is a parallel version of evalq, and is a convenience function invoking clusterCall
+clusterEvalQ(cluster,
+             c(library(nlme), library(MuMIn), library(corMLPE)))
+
+## Specify the number of predictor variables and including the max.r function
+nrow(mlpe_table2) ## 171
+options(na.action = na.fail)
+
+## Run pdredge
+Allmodels <- MuMIn::pdredge(Model, rank = "AIC", 
+                            m.lim=c(0, 1), cluster)
+
+## SAVE ALL MODELS
+save(Allmodels, file="./Results/simonsi/Univariates/Allmodels_univaraites_simonsi.RData")
+
+### LOAD ALL MODELS
+load(file="./Results/simonsi/Univariates/Allmodels_univaraites_simonsi.RData")
+
+## BEST MODELS
+nrow(Allmodels) ## 5
+BM = model.sel(Allmodels, rank=AIC)
+df = as.data.frame(BM)
+df 
+write.csv(df, "Results/simonsi/Univariates/Unimodels_habitats_simonsi.csv")
 
 #REL-distance: Very-High Resistance
 
 
 
 
-###### 8b. Correlations ----------------------------------------------------
+###### 8b. CORRELATIONS ----------------------------------------------------
 #perform Correlogram showing the correlation between all resistance distances included as predictors in MLPE regression models. Pearson’s correlation coefficients (r). 
 
-#A. Check the correlation among enviromental variables
-ALLvars = as.data.frame(mlpe_table[5:length(mlpe_table)])
+#A. Load MLPE table if necessary:
+mlpe_table = read.csv("Metafiles/MLPE_table_simonsi.csv", row.names = 1)
+head(mlpe_table)
+
+## Check the correlation among enviromental variables
+ALLvars = as.data.frame(mlpe_table[5:14])
 head(ALLvars)
 Allvars_cor = cor(ALLvars)
 head(Allvars_cor)
 
-#B. Save results
-write.csv(Allvars_cor, "Correlation_simonsi.csv")
+write.csv(Allvars_cor, "Results/simonsi/Correlation/Correlation_simonsi.csv")
 
-pdf("Correlogram_simonsi.pdf", onefile = T)
-corrplot(Allvars_cor, method="pie")
+## Corplot
+pdf("Results/simonsi/Correlation/Correlogram_simonsi.pdf", onefile = T)
+corrplot(Allvars_cor, 
+         method="color", 
+         type = "upper", 
+         outline = FALSE, 
+         diag = F,
+         tl.col = "black")
 dev.off()
-
 
 
 ##END
