@@ -7,14 +7,14 @@ Scripts in 3 steps to run Isolation-by-Resistance (IBR) using Maximum‐likeliho
   1. Euclidian Distance (Geographic Distance)
   2. Topographic Distance in TopoDistance R package
   3. RiverNetwork Distance in riverdist R package
-  4. Environmental Distances based on PCA-distance of continuous variables as WorldClim-Bioclimatic
+  4. Productivity Distance based on Species Distribution Models (SDM) based on PET, Temperature, and Precipitation. To see the scripts on SDM: https://github.com/jdalapicolla/SDM_biomod2
   5. Habitat Distance based on a categorial raster LandUse/Biomes/etc.
  
  STEP 2: Organizing and choose Distances Matrices
  
  STEP 3: Running Mixed models to estimate Isolation-by-Resistance (IBR) between individuals using lme()
  
- STEP 4: Running Mixed models to estimate Isolation-by-Resistance (IBR) between individuals using gls()
+ STEP 4: Running Mixed models to estimate Isolation-by-Resistance (IBR) between individuals using gls() and Nested MLPE
  
  
 ## PART 1 - GENETIC STRUCTURE AND GENETIC DIVERSITY https://github.com/jdalapicolla/LanGen_pipeline_version2
