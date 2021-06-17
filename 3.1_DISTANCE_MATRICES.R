@@ -68,7 +68,7 @@ colnames(eucl_dist_steerei) = steerei[,7]
 eucl_dist_steerei
 
 #B. Converting in KM
-eucl_dist_steerei = eucl_dist_steerei/100
+eucl_dist_steerei = eucl_dist_steerei/1000
 
 #C. Removing upper diagonal:
 eucl_dist_steerei[upper.tri(eucl_dist_steerei, diag = T)] = NA
@@ -84,9 +84,14 @@ eucl_dist_steerei = eucl_dist_steerei %>%
 #E. Verify for NA or 0 values
 head(eucl_dist_steerei)
 summary(eucl_dist_steerei)
+
+#F. Replace 0 to 0.001
+eucl_dist_steerei[,3][eucl_dist_steerei[,3] == 0] = 0.001
+head(eucl_dist_steerei)
+summary(eucl_dist_steerei)
 length(eucl_dist_steerei[,3]) #171
 
-#F. Save results
+#G. Save results
 write.csv(eucl_dist_steerei, "Distances/eucl_dist_steerei.csv")
 
 
@@ -99,7 +104,7 @@ colnames(eucl_dist_simonsi) = simonsi[,8]
 eucl_dist_simonsi
 
 #B. Converting in KM
-eucl_dist_simonsi = eucl_dist_simonsi/100
+eucl_dist_simonsi = eucl_dist_simonsi/1000
 
 #C. Removing upper diagonal:
 eucl_dist_simonsi[upper.tri(eucl_dist_simonsi, diag = T)] = NA
@@ -113,7 +118,12 @@ eucl_dist_simonsi = eucl_dist_simonsi %>%
   setNames(c("X1", "X2","eucl_dist"))
 
 #E. Verify for NA or 0 values
-head(eucl_dist_steerei)
+head(eucl_dist_simonsi)
+summary(eucl_dist_simonsi)
+
+#F. Replace 0 to 0.001
+eucl_dist_simonsi[,3][eucl_dist_simonsi[,3] == 0] = 0.001
+head(eucl_dist_simonsi)
 summary(eucl_dist_simonsi)
 length(eucl_dist_simonsi[,3]) #136
 
@@ -123,526 +133,7 @@ write.csv(eucl_dist_simonsi, "Distances/eucl_dist_simonsi.csv")
 
 
 
-
-
-##### 3. TEMPERATURE DISSIMILARITY ------------------------------------------------
-### Based on WorldClim 2.1 - Monthly Temperature
-#A. Loading rasters
-current.list = list.files(path="Rasters/WC2_tavg", pattern =".tif", full.names=TRUE)
-Temp_WC2 = raster::stack(current.list)
-names(Temp_WC2)
-projection(Temp_WC2) = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +units=m"
-
-#STEEREI:
-#A. Extracting climatic data
-Temp_values_WC2_st = as.data.frame(raster::extract(Temp_WC2, steerei_coord[,c(2,3)]))
-class(Temp_values_WC2_st)
-head(Temp_values_WC2_st)
-summary(Temp_values_WC2_st)
-
-#B. Run PCA and extract the first components
-pca_temp_WC2_st = dudi.pca(Temp_values_WC2_st, center = TRUE, scale = TRUE, scannf = FALSE, nf=length(Temp_values_WC2_st))
-
-#C. Saving PCA results
-#% of PC variation
-perc_pca = as.data.frame(round(pca_temp_WC2_st$eig,3))
-soma = sum (perc_pca)
-perc_pca[,2] = round(((perc_pca/soma)*100),3)
-colnames(perc_pca) = c("Eigenvalues", "Contribution (%)")
-perc_pca
-write.csv(perc_pca, file = "./PCA/PCA_temp/contribution_pc_eig_temp_WC2_steerei.csv")
-
-#row coordinates i.e. the principal components
-pca_temp_WC2_st$li
-write.csv(pca_temp_WC2_st$li, file = "./PCA/PCA_temp/PCompPCA_coord_temp_WC2_steerei.csv")
-
-#column normed scores i.e. the principal axes
-pca_temp_WC2_st$c1
-write.csv(as.data.frame(pca_temp_WC2_st$c1), file = "./PCA/PCA_temp/AXcompPCA_coord_temp_WC2_steerei.csv")
-
-#D. Selecting PC by Broken Stick: 1PCs
-pca_temp_BS_st = prcomp(Temp_values_WC2_st, center=TRUE, scale=TRUE)
-summary(pca_temp_BS_st) #verify if same PC% was recovered by dudi.pca function
-screeplot(pca_temp_BS_st, bstick=TRUE, type="lines")
-screeplot(pca_temp_BS_st, bstick=TRUE, type="barplot")
-#Broken Stick Rule: Principal components should be retained as long as observed eigenvalues are higher than corresponding random broken stick components. Jackson 1993 & Legendre & Legendre 2012
-
-summary(pca_WC2_BS)
-#1PCs are 86.13% of variance
-n_pcs = 1
-
-#E. Calculate PCA-based distance based on Broken Stick Rule
-PC_distLEA_prcomp_st = ecodist::distance(pca_temp_BS_st$x[,1:n_pcs], method = "euclidean")
-#verify
-head(PC_distLEA_prcomp_st)
-class(PC_distLEA_prcomp_st)
-#convert to matrix
-t_prcompLEA_st = as.matrix(PC_distLEA_prcomp_st)
-t_prcompLEA_st[1:10,1:10]
-#row and col names:
-rownames(t_prcompLEA_st) = steerei[,7]
-colnames(t_prcompLEA_st) = steerei[,7]
-t_prcompLEA_st[1:10,1:10]
-
-#F. Removing upper diagonal:
-t_prcompLEA_st[upper.tri(t_prcompLEA_st, diag = T)] = NA
-t_prcompLEA_st
-
-#G. Converting distance matrix into data frame for analyses:
-temp_dist_st = t_prcompLEA_st %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","temperature"))
-
-#H. Verify for NA or 0 values
-head(temp_dist_st)
-summary(temp_dist_st)
-length(temp_dist_st[,3]) #171
-
-#I. Replace 0 to 0.001
-temp_dist_st[,3][temp_dist_st[,3] == 0] = 0.001
-
-#J. Verify for NA or 0 values
-summary(temp_dist_st)
-length(temp_dist_st[,3]) #171
-
-#K. Save results
-write.csv(temp_dist_st, "Distances/temp_dist_steerei.csv")
-
-
-
-
-#SIMONSI:
-#A. Extracting climatic data
-Temp_values_WC2_si = as.data.frame(raster::extract(Temp_WC2, simonsi_coord[,c(2,3)]))
-class(Temp_values_WC2_si)
-head(Temp_values_WC2_si)
-summary(Temp_values_WC2_si)
-
-#B. Run PCA and extract the first components
-pca_temp_WC2_si = dudi.pca(Temp_values_WC2_si, center = TRUE, scale = TRUE, scannf = FALSE, nf=length(Temp_values_WC2_si))
-
-#C. Saving PCA results
-#% of PC variation
-perc_pca = as.data.frame(round(pca_temp_WC2_si$eig,3))
-soma = sum (perc_pca)
-perc_pca[,2] = round(((perc_pca/soma)*100),3)
-colnames(perc_pca) = c("Eigenvalues", "Contribution (%)")
-perc_pca
-write.csv(perc_pca, file = "./PCA/PCA_temp/contribution_pc_eig_temp_WC2_simonsi.csv")
-#row coordinates i.e. the principal components
-pca_temp_WC2_si$li
-write.csv(pca_temp_WC2_si$li, file = "./PCA/PCA_temp/PCompPCA_coord_temp_WC2_simonsi.csv")
-#column normed scores i.e. the principal axes
-pca_temp_WC2_si$c1
-write.csv(as.data.frame(pca_temp_WC2_si$c1), file = "./PCA/PCA_temp/AXcompPCA_coord_temp_WC2_simonsi.csv")
-
-#D. Selecting PC by Broken Stick: 1PCs
-pca_temp_BS_si = prcomp(Temp_values_WC2_si, center=TRUE, scale=TRUE)
-summary(pca_temp_BS_si) #verify if same PC% was recovered by dudi.pca function
-screeplot(pca_temp_BS_si, bstick=TRUE, type="lines")
-screeplot(pca_temp_BS_si, bstick=TRUE, type="barplot")
-#Broken Stick Rule: Principal components should be retained as long as observed eigenvalues are higher than corresponding random broken stick components. Jackson 1993 & Legendre & Legendre 2012
-
-summary(pca_temp_BS_si)
-#1PCs are 94.97% of variance
-n_pcs = 1
-
-#E. Calculate PCA-based distance based on Broken Stick Rule
-PC_distLEA_prcomp_si = ecodist::distance(pca_temp_BS_si$x[,1:n_pcs], method = "euclidean")
-#verify
-head(PC_distLEA_prcomp_si)
-class(PC_distLEA_prcomp_si)
-#convert to matrix
-t_prcompLEA_si = as.matrix(PC_distLEA_prcomp_si)
-t_prcompLEA_si[1:10,1:10]
-#row and col names:
-rownames(t_prcompLEA_si) = simonsi[,8]
-colnames(t_prcompLEA_si) = simonsi[,8]
-t_prcompLEA_si[1:10,1:10]
-
-#F. Removing upper diagonal:
-t_prcompLEA_si[upper.tri(t_prcompLEA_si, diag = T)] = NA
-t_prcompLEA_si
-
-#G. Converting distance matrix into data frame for analyses:
-temp_dist_si = t_prcompLEA_si %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","temperature"))
-
-#H. Verify for NA or 0 values
-head(temp_dist_si)
-summary(temp_dist_si)
-length(temp_dist_si[,3]) #136
-
-#I. Replace 0 to 0.001
-temp_dist_si[,3][temp_dist_si[,3] == 0] = 0.001
-
-#J. Verify for NA or 0 values
-summary(temp_dist_si)
-length(temp_dist_si[,3]) #171
-
-#K. Save results
-write.csv(temp_dist_si, "Distances/temp_dist_simonsi.csv")
-
-
-
-
-
-
-
-
-
-##### 4. PRECIPITATION DISSIMILARITY ------------------------------------------
-### Based on WorldClim 2.1 - Monthly Precipitation
-#A. Loading rasters
-current.list = list.files(path="Rasters/precipitation", pattern =".tif", full.names=TRUE)
-preci_WC2 = raster::stack(current.list)
-names(preci_WC2)
-projection(preci_WC2) = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +units=m"
-
-
-#STEEREI
-#A. Extracting climatic data
-preci_values_WC2_st = as.data.frame(raster::extract(preci_WC2, steerei_coord[,c(2,3)]))
-class(preci_values_WC2_st)
-head(preci_values_WC2_st)
-summary(preci_values_WC2_st)
-
-#B. Run PCA and extract the first components
-pca_preci_WC2_st = dudi.pca(preci_values_WC2_st, center = TRUE, scale = TRUE, scannf = FALSE, nf=length(preci_values_WC2_st))
-
-#C. Saving PCA results
-#% of PC variation
-perc_pca = as.data.frame(round(pca_preci_WC2_st$eig,3))
-soma = sum (perc_pca)
-perc_pca[,2] = round(((perc_pca/soma)*100),3)
-colnames(perc_pca) = c("Eigenvalues", "Contribution (%)")
-perc_pca
-write.csv(perc_pca, file = "./PCA/PCA_preci/contribution_pc_eig_preci_WC2_steerei.csv")
-
-#row coordinates i.e. the principal components
-pca_preci_WC2_st$li
-write.csv(pca_preci_WC2_st$li, file = "./PCA/PCA_preci/PCompPCA_coord_preci_WC2_steerei.csv")
-
-#column normed scores i.e. the principal axes
-pca_preci_WC2_st$c1
-write.csv(as.data.frame(pca_preci_WC2_st$c1), file = "./PCA/PCA_temp/AXcompPCA_coord_preci_WC2_steerei.csv")
-
-#D. Selecting PC by Broken Stick: 1PCs
-pca_preci_BS_st = prcomp(preci_values_WC2_st, center=TRUE, scale=TRUE)
-summary(pca_preci_BS_st) #verify if same PC% was recovered by dudi.pca function
-screeplot(pca_preci_BS_st, bstick=TRUE, type="lines")
-screeplot(pca_preci_BS_st, bstick=TRUE, type="barplot")
-#Broken Stick Rule: Principal components should be retained as long as observed eigenvalues are higher than corresponding random broken stick components. Jackson 1993 & Legendre & Legendre 2012
-
-summary(pca_preci_BS_st)
-#1PCs are 72.74% of variance
-n_pcs = 1
-
-#E. Calculate PCA-based distance based on Broken Stick Rule
-PC_distLEA_prcomp_st = ecodist::distance(pca_preci_BS_st$x[,1:n_pcs], method = "euclidean")
-#verify
-head(PC_distLEA_prcomp_st)
-class(PC_distLEA_prcomp_st)
-#convert to matrix
-t_prcompLEA_st = as.matrix(PC_distLEA_prcomp_st)
-t_prcompLEA_st[1:10,1:10]
-#row and col names:
-rownames(t_prcompLEA_st) = steerei[,7]
-colnames(t_prcompLEA_st) = steerei[,7]
-t_prcompLEA_st[1:10,1:10]
-
-#F. Removing upper diagonal:
-t_prcompLEA_st[upper.tri(t_prcompLEA_st, diag = T)] = NA
-t_prcompLEA_st
-
-#G. Converting distance matrix into data frame for analyses:
-preci_dist_st = t_prcompLEA_st %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","precipitation"))
-
-#H. Verify for NA or 0 values
-head(preci_dist_st)
-summary(preci_dist_st)
-length(preci_dist_st[,3]) #171
-
-#I. replace 0 to 0.001
-preci_dist_st[,3][preci_dist_st[,3] == 0] = 0.00001
-
-#J. verify for NA or 0 values
-summary(preci_dist_st)
-length(preci_dist_st[,3]) #171
-
-#K. Save results
-write.csv(preci_dist_st, "Distances/preci_dist_steerei.csv")
-
-
-
-#SIMONSI
-#A. Extracting climatic data
-preci_values_WC2_si = as.data.frame(raster::extract(preci_WC2, simonsi_coord[,c(2,3)]))
-class(preci_values_WC2_si)
-head(preci_values_WC2_si)
-summary(preci_values_WC2_si)
-
-#B. Run PCA and extract the first components
-pca_preci_WC2_si = dudi.pca(preci_values_WC2_si, center = TRUE, scale = TRUE, scannf = FALSE, nf=length(preci_values_WC2_si))
-
-#C. Saving PCA results
-#% of PC variation
-perc_pca = as.data.frame(round(pca_preci_WC2_si$eig,3))
-soma = sum (perc_pca)
-perc_pca[,2] = round(((perc_pca/soma)*100),3)
-colnames(perc_pca) = c("Eigenvalues", "Contribution (%)")
-perc_pca
-write.csv(perc_pca, file = "./PCA/PCA_preci/contribution_pc_eig_preci_WC2_simonsi.csv")
-
-#row coordinates i.e. the principal components
-pca_preci_WC2_si$li
-write.csv(pca_preci_WC2_si$li, file = "./PCA/PCA_preci/PCompPCA_coord_preci_WC2_simonsi.csv")
-
-#column normed scores i.e. the principal axes
-pca_preci_WC2_si$c1
-write.csv(as.data.frame(pca_preci_WC2_si$c1), file = "./PCA/PCA_temp/AXcompPCA_coord_preci_WC2_simonsi.csv")
-
-#D. Selecting PC by Broken Stick: 2PCs
-pca_preci_BS_si = prcomp(preci_values_WC2_si, center=TRUE, scale=TRUE)
-summary(pca_preci_BS_si) #verify if same PC% was recovered by dudi.pca function
-screeplot(pca_preci_BS_si, bstick=TRUE, type="lines")
-screeplot(pca_preci_BS_si, bstick=TRUE, type="barplot")
-#Broken Stick Rule: Principal components should be retained as long as observed eigenvalues are higher than corresponding random broken stick components. Jackson 1993 & Legendre & Legendre 2012
-
-summary(pca_preci_BS_si)
-#2PCs are 86.44% of variance
-n_pcs = 2
-
-#E. Calculate PCA-based distance based on Broken Stick Rule
-PC_distLEA_prcomp_si = ecodist::distance(pca_preci_BS_si$x[,1:n_pcs], method = "euclidean")
-#verify
-head(PC_distLEA_prcomp_si)
-class(PC_distLEA_prcomp_si)
-#convert to matrix
-t_prcompLEA_si = as.matrix(PC_distLEA_prcomp_si)
-t_prcompLEA_si[1:10,1:10]
-#row and col names:
-rownames(t_prcompLEA_si) = simonsi[,8]
-colnames(t_prcompLEA_si) = simonsi[,8]
-t_prcompLEA_si[1:10,1:10]
-
-#F. removing upper diagonal:
-t_prcompLEA_si[upper.tri(t_prcompLEA_si, diag = T)] = NA
-t_prcompLEA_si
-
-#G. Converting distance matrix into data frame for analyses:
-preci_dist_si = t_prcompLEA_si %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","precipitation"))
-
-#H. Verify for NA or 0 values
-head(preci_dist_si)
-summary(preci_dist_si)
-length(preci_dist_si[,3]) #136
-
-#I. Replace 0 to 0.001
-preci_dist_si[,3][preci_dist_si[,3] == 0] = 0.00001
-
-#J. Verify for NA or 0 values
-summary(preci_dist_si)
-length(preci_dist_si[,3]) #136
-
-#K. Save results
-write.csv(preci_dist_si, "Distances/preci_dist_simonsi.csv")
-
-
-
-
-
-
-
-
-
-##### 5. PET DISSIMILARITY -----------------------------------------------------
-### Based on 6 Environ variables - PET (Potential Evapotranspiration)
-#A. Loading rasters
-current.list = list.files(path="Rasters/PET", pattern =".tif", full.names=TRUE)
-PET_WC2 = raster::stack(current.list)
-names(PET_WC2)
-projection(PET_WC2) = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +units=m"
-
-
-##STEEREI:
-#A. Extracting climatic data
-PET_values_st = as.data.frame(raster::extract(PET_WC2, steerei_coord[,c(2,3)]))
-class(PET_values_st)
-head(PET_values_st)
-summary(PET_values_st)
-
-#B. Run PCA and extract the components
-pca_PET_st = dudi.pca(PET_values_st, center = TRUE, scale = TRUE, scannf = FALSE, nf=length(PET_values_st))
-
-#C. Saving PCA results
-#% of PC variation
-perc_pca = as.data.frame(round(pca_PET_st$eig,3))
-soma = sum (perc_pca)
-perc_pca[,2] = round(((perc_pca/soma)*100),3)
-colnames(perc_pca) = c("Eigenvalues", "Contribution (%)")
-perc_pca
-write.csv(perc_pca, file = "./PCA/PCA_PET/contribution_pc_eig_PET_WC2_steerei.csv")
-
-#row coordinates i.e. the principal components
-pca_PET_st$li
-write.csv(pca_PET_st$li, file = "./PCA/PCA_PET/PCompPCA_coord_PET_WC2_steerei.csv")
-
-#column normed scores i.e. the principal axes
-pca_PET_st$c1
-write.csv(as.data.frame(pca_PET_st$c1), file = "./PCA/PCA_PET/AXcompPCA_coord_PET_WC2_steerei.csv")
-
-#D. Selecting PC by Broken Stick: 3PCs
-pca_PET_BS_st = prcomp(PET_values_st, center=TRUE, scale=TRUE)
-summary(pca_PET_BS_st) #verify if same PC% was recovered by dudi.pca function
-screeplot(pca_PET_BS_st, bstick=TRUE, type="lines")
-screeplot(pca_PET_BS_st, bstick=TRUE, type="barplot")
-#Broken Stick Rule: Principal components should be retained as long as observed eigenvalues are higher than corresponding random broken stick components. Jackson 1993 & Legendre & Legendre 2012
-
-summary(pca_PET_BS_st)
-#3PCs are 95.65% of variance
-n_pcs = 3
-
-#E. Calculate PCA-based distance based on Broken Stick Rule
-PC_distLEA_prcomp_st = ecodist::distance(pca_PET_BS_st$x[,1:n_pcs], method = "euclidean")
-#verify
-head(PC_distLEA_prcomp_st)
-class(PC_distLEA_prcomp_st)
-#convert to matrix
-t_prcompLEA_st = as.matrix(PC_distLEA_prcomp_st)
-t_prcompLEA_st[1:10,1:10]
-#row and col names:
-rownames(t_prcompLEA_st) = steerei[,7]
-colnames(t_prcompLEA_st) = steerei[,7]
-t_prcompLEA_st[1:10,1:10]
-
-#F. Removing upper diagonal:
-t_prcompLEA_st[upper.tri(t_prcompLEA_st, diag = T)] = NA
-t_prcompLEA_st
-
-#G. Converting distance matrix into data frame for analyses:
-PET_dist_st = t_prcompLEA_st %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","PET"))
-
-#H. Verify for NA or 0 values
-head(PET_dist_st)
-summary(PET_dist_st)
-length(PET_dist_st[,3]) #171
-
-#I. Replace 0 to 0.001
-PET_dist_st[,3][PET_dist_st[,3] == 0] = 0.001
-
-#J. Verify for NA or 0 values
-summary(PET_dist_st)
-length(PET_dist_st[,3]) #171
-
-#K. Save results
-write.csv(PET_dist_st, "Distances/PET_dist_steerei.csv")
-
-
-
-##SIMONSI:
-#A. Extracting climatic data
-PET_values_si = as.data.frame(raster::extract(PET_WC2, simonsi_coord[,c(2,3)]))
-class(PET_values_si)
-head(PET_values_si)
-summary(PET_values_si)
-
-#B. Run PCA and extract the first components
-pca_PET_si = dudi.pca(PET_values_si, center = TRUE, scale = TRUE, scannf = FALSE, nf=length(PET_values_si))
-
-#C. Saving PCA results
-#% of PC variation
-perc_pca = as.data.frame(round(pca_PET_si$eig,3))
-soma = sum (perc_pca)
-perc_pca[,2] = round(((perc_pca/soma)*100),3)
-colnames(perc_pca) = c("Eigenvalues", "Contribution (%)")
-perc_pca
-write.csv(perc_pca, file = "./PCA/PCA_PET/contribution_pc_eig_PET_WC2_simonsi.csv")
-
-#row coordinates i.e. the principal components
-pca_PET_si$li
-write.csv(pca_PET_si$li, file = "./PCA/PCA_PET/PCompPCA_coord_PET_WC2_simonsi.csv")
-
-#column normed scores i.e. the principal axes
-pca_PET_si$c1
-write.csv(as.data.frame(pca_PET_si$c1), file = "./PCA/PCA_PET/AXcompPCA_coord_PET_WC2_simonsi.csv")
-
-#D. Selecting PC by Broken Stick: 2PCs
-pca_PET_BS_si = prcomp(PET_values_si, center=TRUE, scale=TRUE)
-summary(pca_PET_BS_si) #verify if same PC% was recovered by dudi.pca function
-screeplot(pca_PET_BS_si, bstick=TRUE, type="lines")
-screeplot(pca_PET_BS_si, bstick=TRUE, type="barplot")
-#Broken Stick Rule: Principal components should be retained as long as observed eigenvalues are higher than corresponding random broken stick components. Jackson 1993 & Legendre & Legendre 2012
-
-summary(pca_PET_BS_si)
-#2PCs are 93.93% of variance
-n_pcs = 2
-
-#E. Calculate PCA-based distance based on Broken Stick Rule
-PC_distLEA_prcomp_si = ecodist::distance(pca_PET_BS_si$x[,1:n_pcs], method = "euclidean")
-#verify
-head(PC_distLEA_prcomp_si)
-class(PC_distLEA_prcomp_si)
-#convert to matrix
-t_prcompLEA_si = as.matrix(PC_distLEA_prcomp_si)
-t_prcompLEA_si[1:10,1:10]
-#row and col names:
-rownames(t_prcompLEA_si) = simonsi[,8]
-colnames(t_prcompLEA_si) = simonsi[,8]
-t_prcompLEA_si[1:10,1:10]
-
-#F. Removing upper diagonal:
-t_prcompLEA_si[upper.tri(t_prcompLEA_si, diag = T)] = NA
-t_prcompLEA_si
-
-#G. Converting distance matrix into data frame for analyses:
-PET_dist_si = t_prcompLEA_si %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","PET"))
-
-#H. Verify for NA or 0 values
-head(PET_dist_si)
-summary(PET_dist_si)
-length(PET_dist_si[,3]) #136
-
-#I. Replace 0 to 0.001
-PET_dist_si[,3][PET_dist_si[,3] == 0] = 0.001
-
-#J. Verify for NA or 0 values
-summary(PET_dist_si)
-length(PET_dist_si[,3]) #136
-
-#K. Save results
-write.csv(PET_dist_si, "Distances/PET_dist_simonsi.csv")
-
-
-
-
-
-
-
-
-
-##### 6. TOPOGRAPHIC DISTANCE ----------------------------------------------------
+##### 3. TOPOGRAPHIC DISTANCE ----------------------------------------------------
 ### Based on SRTM elevation data from WorldClim 2.1
 #A. Loading rasters
 elevation = raster("Rasters/DEM/wc2.1_30s_elev.tif")
@@ -659,7 +150,6 @@ writeRaster(elevation, filename="Rasters/DEM/elevation_WA.tif", format="GTiff", 
 elevation = raster("Rasters/DEM/elevation_WA.tif")
 projection(elevation) = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84", doCheckCRSArgs = F)
 
-
 #STEEREI:
 #A. create a topographic distance object:
 topo_dist_st = topoDist(elevation, steerei_coord[2:3], directions = 8, paths = FALSE, zweight = 1)
@@ -667,10 +157,10 @@ class(topo_dist_st)
 topo_dist_st[1:10,1:10]
 
 #B. Convert in KM
-topo_dist_st = topo_dist_st/100
+topo_dist_st = topo_dist_st/1000
 topo_dist_st[1:10,1:10]
 
-#C. Rremoving upper diagonal:
+#C. Removing upper diagonal:
 topo_dist_st[upper.tri(topo_dist_st, diag = T)] = NA
 topo_dist_st
 
@@ -705,7 +195,7 @@ class(topo_dist_si)
 topo_dist_si[1:10,1:10]
 
 #B. Convert in KM
-topo_dist_si = topo_dist_si/100
+topo_dist_si = topo_dist_si/1000
 topo_dist_si[1:10,1:10]
 
 #C. Removing upper diagonal:
@@ -737,11 +227,7 @@ write.csv(topo_dist_si, "Distances/topo_dist_simonsi.csv")
 
 
 
-
-
-
-
-##### 7. RIVER DISTANCE --------------------------------------------------------------
+##### 4. RIVER DISTANCE --------------------------------------------------------------
 ### Based on https://www.naturalearthdata.com/downloads/ The The most detailed. Suitable for making zoomed-in maps of countries and regions. 1:10,000,000 / 1″ = 158 miles / 1 cm = 100 km 1:10m physical rivers: "ne_10m_rivers_lake_centerlines"
 
 #A. Loading river shapefile:
@@ -777,6 +263,7 @@ wa_steerei_fixed = cleanup(wa_steerei)
 
 #F. Saving the cleaned topology a Rdata file:
 save(wa_steerei_fixed, file = "Shapefiles/rivers_network_WA_fixed.Rdata")
+load("Shapefiles/rivers_network_WA_fixed.Rdata")
 
 #G. Topology
 topologydots(rivers=wa_steerei_fixed)
@@ -915,7 +402,7 @@ write.csv(dmat_si, "Distances/river_dist_simonsi.csv")
 
 
 
-##### 8. HABITAT RESISTANCE -------------------------------------------------
+##### 5. HABITAT RESISTANCE -------------------------------------------------
 ### Based on Tropical and Subtropical Wetlands Distribution version 2
 #Gumbricht, T.; Román-Cuesta, R.M.; Verchot, L.V.; Herold, M.; Wittmann, F; Householder, E.; Herold, N.; Murdiyarso, D., 2017, "Tropical and Subtropical Wetlands Distribution version 2", https://doi.org/10.17528/CIFOR/DATA.00058, Center for International Forestry Research (CIFOR), V3, UNF:6:Bc9aFtBpam27aFOCMgW71Q== [fileUNF]
 
@@ -964,59 +451,11 @@ wetlands_st
 plot(wetlands_st)
 
 
-#C. Create a data frame with the geographical coordenates. Need to remove the row and col names:
+#C. Create a data frame with the geographical coordinates. Need to remove the row and col names:
 steerei_gdist = as.matrix(steerei[,c(4:5)])
 rownames(steerei_gdist) = NULL
 colnames(steerei_gdist) = NULL
 head(steerei_gdist)
-
-
-######################################## D. NULL HYPOTHESIS. ALL VALUES ARE 1.
-NULL_wetlands_st = wetlands_st
-#change the values
-NULL_wetlands_st[NULL_wetlands_st == 0] = 1
-NULL_wetlands_st[NULL_wetlands_st == 1] = 1
-NULL_wetlands_st
-plot(NULL_wetlands_st)
-
-#Create a cost distance
-NULL_wetlands_st_tr = transition(NULL_wetlands_st, transitionFunction=mean, 16)
-NULL_wetlands_st_trC = geoCorrection(NULL_wetlands_st_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_st_NULL = costDistance(NULL_wetlands_st_trC, steerei_gdist)
-
-#Computing a matrix between all observations
-dmat_st = as.matrix(wetDIST_st_NULL)
-head(dmat_st)
-#row and col names:
-rownames(dmat_st) = steerei[,7]
-colnames(dmat_st) = steerei[,7]
-dmat_st[1:10,1:10]
-
-#Removing upper diagonal:
-dmat_st[upper.tri(dmat_st, diag = T)] = NA
-dmat_st
-
-#Converting distance matrix into data frame for analyses:
-dmat_st = dmat_st %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","wetlands_NULL"))
-
-#Verify for NA or 0 values
-head(dmat_st)
-summary(dmat_st)
-length(dmat_st[,3]) #171
-
-#Replace 0 to 0.001
-dmat_st[,3][dmat_st[,3] == 0] = 0.001
-
-#Verify for NA or 0 values
-summary(dmat_st)
-length(dmat_st[,3]) #171
-
-#Save results
-write.csv(dmat_st, "Distances/wetlands_dist_NULL_steerei.csv")
 
 
 
@@ -1029,7 +468,7 @@ VH_wetlands_st[VH_wetlands_st == 1] = 0.1
 VH_wetlands_st
 plot(VH_wetlands_st)
 
-#Create a cost-disntance
+#Create a cost-distance
 #transition matrix
 VH_wetlands_st_tr = transition(VH_wetlands_st, transitionFunction=mean, 16)
 
@@ -1044,8 +483,8 @@ rownames(steerei_gdist) = NULL
 colnames(steerei_gdist) = NULL
 head(steerei_gdist)
 
-#calculate the cost distance:
-wetDIST_st_VH = costDistance(VH_wetlands_st_trC, steerei_gdist)
+#calculate the resistance distance between points (expected random-walk commute time):
+wetDIST_st_VH = commuteDistance(VH_wetlands_st_trC, steerei_gdist)
 
 #Computing a a matrix between all observations
 dmat_st = as.matrix(wetDIST_st_VH)
@@ -1094,7 +533,7 @@ plot(H_wetlands_st)
 #Create a cost-distance
 H_wetlands_st_tr = transition(H_wetlands_st, transitionFunction=mean, 16)
 H_wetlands_st_trC = geoCorrection(H_wetlands_st_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_st_H = costDistance(H_wetlands_st_trC, steerei_gdist)
+wetDIST_st_H = commuteDistance(H_wetlands_st_trC, steerei_gdist)
 
 #Computing a a matrix between all observations
 dmat_st = as.matrix(wetDIST_st_H)
@@ -1145,7 +584,7 @@ plot(M_wetlands_st)
 #Create a cost-distance
 M_wetlands_st_tr = transition(M_wetlands_st, transitionFunction=mean, 16)
 M_wetlands_st_trC = geoCorrection(M_wetlands_st_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_st_M = costDistance(M_wetlands_st_trC, steerei_gdist)
+wetDIST_st_M = commuteDistance(M_wetlands_st_trC, steerei_gdist)
 
 #Computing a a matrix between all observations
 dmat_st = as.matrix(wetDIST_st_M)
@@ -1194,7 +633,7 @@ plot(L_wetlands_st)
 #Create a cost-distance
 L_wetlands_st_tr = transition(L_wetlands_st, transitionFunction=mean, 16)
 L_wetlands_st_trC = geoCorrection(L_wetlands_st_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_st_L = costDistance(L_wetlands_st_trC, steerei_gdist)
+wetDIST_st_L = commuteDistance(L_wetlands_st_trC, steerei_gdist)
 
 #Computing a a matrix between all observations
 dmat_st = as.matrix(wetDIST_st_L)
@@ -1248,60 +687,11 @@ wetlands_si
 plot(wetlands_si)
 
 
-#C. Create a data frame with the geographical coordenates. Need to remove the row and col names:
+#C. Create a data frame with the geographical coordinates. Need to remove the row and col names:
 simonsi_gdist = as.matrix(simonsi[,c(5:6)])
 rownames(simonsi_gdist) = NULL
 colnames(simonsi_gdist) = NULL
 head(simonsi_gdist)
-
-
-
-#################################################### D. NULL HYPOTHESIS. ALL VALUES ARE 1
-NULL_wetlands_si = wetlands_si
-#change the values
-NULL_wetlands_si[NULL_wetlands_si == 0] = 1
-NULL_wetlands_si[NULL_wetlands_si == 1] = 1
-NULL_wetlands_si
-plot(NULL_wetlands_si)
-
-#Create a distance matrix:
-NULL_wetlands_si_tr = transition(NULL_wetlands_si, transitionFunction=mean, 16)
-NULL_wetlands_si_trC = geoCorrection(NULL_wetlands_si_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_si_NULL = costDistance(NULL_wetlands_si_trC, simonsi_gdist)
-
-#Computing a matrix between all observations
-dmat_si = as.matrix(wetDIST_si_NULL)
-head(dmat_si)
-#row and col names:
-rownames(dmat_si) = simonsi[,8]
-colnames(dmat_si) = simonsi[,8]
-dmat_si[1:10,1:10]
-
-#Removing upper diagonal:
-dmat_si[upper.tri(dmat_si, diag = T)] = NA
-dmat_si
-
-#Converting distance matrix into data frame for analyses:
-dmat_si = dmat_si %>%
-  melt %>%
-  na.omit %>%
-  arrange(., Var1) %>%
-  setNames(c("X1", "X2","wetlands_NULL"))
-
-#Verify for NA or 0 values
-head(dmat_si)
-summary(dmat_si)
-length(dmat_si[,3]) #136
-
-#replace 0 to 0.001
-dmat_si[,3][dmat_si[,3] == 0] = 0.001
-
-#verify for NA or 0 values
-summary(dmat_si)
-length(dmat_si[,3]) #136
-
-#Save results
-write.csv(dmat_si, "Distances/wetlands_dist_NULL_simonsi.csv")
 
 
 ########################################## 0.1 - 0.9 - VERY HIGH RESISTENCE | 1 = wetland
@@ -1315,7 +705,7 @@ plot(VH_wetlands_si)
 #Create a cost-distance
 VH_wetlands_si_tr = transition(VH_wetlands_si, transitionFunction=mean, 16)
 VH_wetlands_si_trC = geoCorrection(VH_wetlands_si_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_si_VH = costDistance(VH_wetlands_si_trC, simonsi_gdist)
+wetDIST_si_VH = commuteDistance(VH_wetlands_si_trC, simonsi_gdist)
 
 #Computing a a matrix between all observations
 dmat_si = as.matrix(wetDIST_si_VH)
@@ -1364,7 +754,7 @@ plot(H_wetlands_si)
 #Create a cost-distance
 H_wetlands_si_tr = transition(H_wetlands_si, transitionFunction=mean, 16)
 H_wetlands_si_trC = geoCorrection(H_wetlands_si_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_si_H = costDistance(H_wetlands_si_trC, simonsi_gdist)
+wetDIST_si_H = commuteDistance(H_wetlands_si_trC, simonsi_gdist)
 
 #Computing a a matrix between all observations
 dmat_si = as.matrix(wetDIST_si_H)
@@ -1414,7 +804,7 @@ plot(M_wetlands_si)
 #Create a cost-distance
 M_wetlands_si_tr = transition(M_wetlands_si, transitionFunction=mean, 16)
 M_wetlands_si_trC = geoCorrection(M_wetlands_si_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_si_M = costDistance(M_wetlands_si_trC, simonsi_gdist)
+wetDIST_si_M = commuteDistance(M_wetlands_si_trC, simonsi_gdist)
 
 #Computing a a matrix between all observations
 dmat_si = as.matrix(wetDIST_si_M)
@@ -1463,7 +853,7 @@ plot(L_wetlands_si)
 #Create a cost-distance
 L_wetlands_si_tr = transition(L_wetlands_si, transitionFunction=mean, 16)
 L_wetlands_si_trC = geoCorrection(L_wetlands_si_tr, type="c", multpl=FALSE, scl=TRUE)
-wetDIST_si_L = costDistance(L_wetlands_si_trC, simonsi_gdist)
+wetDIST_si_L = commuteDistance(L_wetlands_si_trC, simonsi_gdist)
 
 #Computing a a matrix between all observations
 dmat_si = as.matrix(wetDIST_si_L)
@@ -1498,6 +888,147 @@ length(dmat_si[,3]) #136
 
 #Save results
 write.csv(dmat_si, "Distances/wetlands_dist_L_simonsi.csv")
+
+
+
+
+
+
+
+###### 6. PRODUCTIVITY DISTANCE --------------------------------------------------------------
+### Based on Species Distribution Models (SDM) created following these scripts and biomod2 package: https://github.com/jdalapicolla/SDM_biomod2 
+
+
+###############################################STEEREI (SEASONAL FLOODPLAIN FORESTS):
+#A. Load raster:
+sdm_st = raster("Rasters/SDM/steerei_model_mean.asc")
+ext = extent(-74, -61, -14, -3) #reducing more
+sdm_st = crop(sdm_st, ext)
+plot(sdm_st)
+
+#B. Create a resistance layer multiplying the values by -1. Range of values are 0 to 1000. First we / by 1000 to convert values between 0 and 1.
+sdm_st_corrected = sdm_st/1000
+sdm_st_corrected = 1-sdm_st_corrected
+sdm_st_corrected
+
+
+#C. Create a data frame with the geographical coordinates. Need to remove the row and col names:
+steerei_gdist = as.matrix(steerei[,c(4:5)])
+rownames(steerei_gdist) = NULL
+colnames(steerei_gdist) = NULL
+head(steerei_gdist)
+
+#D. Create a cost-distance
+#transition matrix
+sdm_st_tr = transition(sdm_st_corrected, transitionFunction=mean, 16)
+
+#correct the transition matrix
+sdm_st_trC = geoCorrection(sdm_st_tr, type="c", multpl=FALSE, scl=TRUE)
+
+#calculate the cost distance:
+sdm_st_dist = costDistance(sdm_st_trC, steerei_gdist)
+
+#Computing a a matrix between all observations
+dmat_st = as.matrix(sdm_st_dist)
+head(dmat_st)
+#row and col names:
+rownames(dmat_st) = steerei[,7]
+colnames(dmat_st) = steerei[,7]
+dmat_st[1:10,1:10]
+
+#removing upper diagonal:
+dmat_st[upper.tri(dmat_st, diag = T)] = NA
+dmat_st
+
+#Converting distance matrix into data frame for analyses:
+dmat_st = dmat_st %>%
+  melt %>%
+  na.omit %>%
+  arrange(., Var1) %>%
+  setNames(c("X1", "X2","productivity_dist"))
+
+#Verify for NA or 0 values
+head(dmat_st)
+summary(dmat_st)
+length(dmat_st[,3]) #171
+
+#replace 0 to 0.001
+dmat_st[,3][dmat_st[,3] == 0] = 0.001
+
+#verify for NA or 0 values
+summary(dmat_st)
+length(dmat_st[,3]) #171
+
+#Save results
+write.csv(dmat_st, "Distances/productivity_dist_steerei.csv")
+
+
+
+
+
+
+###############################################SIMONSI (NON-FLOODED FORESTS):
+#A. Load raster:
+sdm_si = raster("Rasters/SDM/simonsi_model_mean.asc")
+ext = extent(-74, -61, -14, -3) #reducing more
+sdm_si = crop(sdm_si, ext)
+plot(sdm_si)
+
+#B. Create a resistance layer multiplying the values by -1. Range of values are 0 to 1000. First we / by 1000 to convert values between 0 and 1.
+sdm_si_corrected = sdm_si/1000
+sdm_si_corrected = 1-sdm_si_corrected
+sdm_si_corrected
+
+
+#C. Create a data frame with the geographical coordinates. Need to remove the row and col names:
+simonsi_gdist = as.matrix(simonsi[,c(5:6)])
+rownames(simonsi_gdist) = NULL
+colnames(simonsi_gdist) = NULL
+head(simonsi_gdist)
+
+#D. Create a cost-distance
+#transition matrix
+sdm_si_tr = transition(sdm_si_corrected, transitionFunction=mean, 16)
+
+#correct the transition matrix
+sdm_si_trC = geoCorrection(sdm_si_tr, type="c", multpl=FALSE, scl=TRUE)
+
+#calculate the cost distance:
+sdm_si_dist = costDistance(sdm_si_trC, simonsi_gdist)
+
+#Computing a a matrix between all observations
+dmat_st = as.matrix(sdm_si_dist)
+head(dmat_st)
+#row and col names:
+rownames(dmat_st) = simonsi[,8]
+colnames(dmat_st) = simonsi[,8]
+dmat_st[1:10,1:10]
+
+#removing upper diagonal:
+dmat_st[upper.tri(dmat_st, diag = T)] = NA
+dmat_st
+
+#Converting distance matrix into data frame for analyses:
+dmat_st = dmat_st %>%
+  melt %>%
+  na.omit %>%
+  arrange(., Var1) %>%
+  setNames(c("X1", "X2","productivity_dist"))
+
+#Verify for NA or 0 values
+head(dmat_st)
+summary(dmat_st)
+length(dmat_st[,3]) #171
+
+#replace 0 to 0.001
+dmat_st[,3][dmat_st[,3] == 0] = 0.001
+
+#verify for NA or 0 values
+summary(dmat_st)
+length(dmat_st[,3]) #171
+
+#Save results
+write.csv(dmat_st, "Distances/productivity_dist_simonsi.csv")
 
 
 ##END
