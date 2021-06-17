@@ -1,5 +1,5 @@
 #####################  LANDSCAPE GENOMICS TUTORIAL   ##################
-###################   STEP 03: MLPE MODELS WITH LME  ##################
+########################   STEP 03: MLPE MODELS  ######################
 
 ### Script prepared by Jeronymo Dalapicolla, Jamille C. Veiga, Carolina S. Carvalho, Luciana C. Resende-Moreira, and Rodolfo Jaffé ###
 
@@ -15,7 +15,6 @@ library(MuMIn)
 library(fmsb)
 library(GeNetIt)
 library(tidyverse)
-library(ggradar)
 library(r2glmm)
 library(snow)
 library(parallel)
@@ -23,7 +22,7 @@ library(GGally)
 library(reshape2)
 library(gridExtra)
 library(RColorBrewer)
-library(ggradar)
+library(ggradar) #devtools::install_github("ricardo-bion/ggradar", dependencies = TRUE)
 library(scales)
 
 ### Load auxiliary functions:
@@ -95,17 +94,18 @@ mlpe_steerei = read.csv("Metafiles/MLPE_table_steerei.csv", row.names = 1)
 head(mlpe_steerei)
 
 #B. Scale predictors/variables for use in models
-mlpe_steerei[, 5:15] = as.data.frame(scale(mlpe_steerei[, 5:15]))
+mlpe_steerei[, 5:(length(mlpe_steerei)-1)] = as.data.frame(scale(mlpe_steerei[, 5:(length(mlpe_steerei)-1)]))
 head(mlpe_steerei)
 
 #C. Creating formula for MLPE:
 #select variables for models:
-vars_mlpe_st = names(mlpe_steerei)[5:15]
+vars_mlpe_st = names(mlpe_steerei)[5:(length(mlpe_steerei)-1)]
 vars_mlpe_st
+
 #use REL distance plus varaibles of your choice keeping one for geographic distance (Null Model):
-vars_mlpe_st_rel = vars_mlpe_st[c(1:6,10)]
+vars_mlpe_st_rel = vars_mlpe_st[c(1:5)]
 mlpe_formula_rel_st = as.formula(paste("RELgen ~ ",paste(vars_mlpe_st_rel, collapse = " + "),sep = ""))
-mlpe_formula_rel_st #7 variables
+mlpe_formula_rel_st #5 variables
 
 
 
@@ -136,14 +136,13 @@ summary(Fullmodel)
 RES <- residuals(Fullmodel, type="normalized")
 FIT <- fitted(Fullmodel)
 plot(FIT, RES) ; abline(0,0, col="red") #OK
-acf(RES) #OK
+acf(RES) ##there small or none spatial autocorrelation in residuals
 
-#Don't need any other action!
 
 
 ##### 4. RUN MODEL SELECTION WITH PARALLELIZED DREDGE ---- 
 #A. Check maximum correlation
-max.r(Fullmodel) ## 0.7920
+max.r(Fullmodel) ##  0.9529138
 
 #B. Specify the number of predictor variables and including the max.r function. 15 observations to each predictor:
 max_var = length(mlpe_steerei[,1])/15
@@ -161,28 +160,28 @@ end_time = Sys.time()
 start_time1 = start_time
 end_time1 = end_time
 diff1 = end_time - start_time
-diff1 ##12.09021 secs
+diff1 ##2.72156 secs
 
 #E. Number of models
-nrow(Allmodels) ## 128
+nrow(Allmodels) ## 32
 
 #F. Save and load All Models:
 save(Allmodels, file="./Results/steerei/FullModel/Allmodels_steerei.RData")
 load(file = "./Results/steerei/FullModel/Allmodels_steerei.RData")
 
-#G. Retrieve Not Collinear Models, with max.r <=0.6. Get Not Collinear Models using cluster too!
+#G. Retrieve Not Colinearity Models, with max.r <=0.6. Get Not colinearity Models using cluster too!
 NCM = get.models(Allmodels, subset = max.r <= 0.6, cluster)
 
-#H. Number of Not Collinear models
-length(NCM) #25
+#H. Number of Not colinear models
+length(NCM) #7
 
-#I. Save and load Not Collinear models
+#I. Save and load Not Colinear models
 save(NCM, file="./Results/steerei/FullModel/NCM_steerei.RData")
 load(file="./Results/steerei/FullModel/NCM_steerei.RData")
 
 #J. Select Best Models using AIC
 BM = model.sel(NCM, rank=AIC)
-nrow(BM) #25
+nrow(BM) #7
 #Check best models
 best_models = BM[BM$delta <= 2, ]
 best_models
@@ -211,7 +210,7 @@ intervals(TopM1)
 TopM1
 
 #B. Refit TopM1
-Refit_TopM1 <- nlme::lme(RELgen ~ PET + precipitation + riverdistance,
+Refit_TopM1 <- nlme::lme(RELgen ~ riverdistance + wetlands_L,
                          random = ~1|POP,
                          correlation = corMLPE(form = ~ from_ID + to_ID),
                          data = mlpe_steerei,
@@ -225,9 +224,8 @@ plot(FIT, RES) ; abline(0,0, col="red") #ok
 acf(RES) #ok
 
 #D. Plot predictors x residuals
-plot(mlpe_steerei$PET, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_steerei$precipitation, RES) ; abline(0,0, col="red") #ok
 plot(mlpe_steerei$riverdistance, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_steerei$wetlands_L, RES) ; abline(0,0, col="red") #ok
 
 #E. Save ACF graph:
 acf(resid(Refit_TopM1,type='normalized')) ## Spatial dependence pattern
@@ -245,134 +243,6 @@ save(Refit_TopM1, file="./Results/steerei/FullModel/refit_REML_TopM1_steerei.RDa
 
 
 
-#H. TopM2 ----
-TopM2 <- get.models(BM, subset = 2)[[1]]
-summary(TopM2)
-intervals(TopM2)
-TopM2
-
-#I. Refit TopM2
-Refit_TopM2 <- nlme::lme(RELgen ~ PET + precipitation + riverdistance + temperature,
-                         random = ~1|POP,
-                         correlation = corMLPE(form = ~ from_ID + to_ID),
-                         data = mlpe_steerei,
-                         method = "REML")
-summary(Refit_TopM2)
-
-#J. Check autocorrelation of residuals
-RES <- residuals(Refit_TopM2, type="normalized")
-FIT <- fitted(Refit_TopM2)
-plot(FIT, RES) ; abline(0,0, col="red") #ok
-acf(RES) #ok
-
-#K. Plot predictors x residuals
-plot(mlpe_steerei$PET, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_steerei$precipitation, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_steerei$riverdistance, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_steerei$temperature, RES) ; abline(0,0, col="red") #ok
-
-#L. Save ACF graph:
-acf(resid(Refit_TopM2,type='normalized')) ## Spatial dependence pattern
-pdf("Results/steerei/Figures/refit_ACF_LME_steerei_TopM2.pdf", onefile = T)
-acf(resid(Refit_TopM2,type='normalized'))
-dev.off()
-
-#M. Summary for Best Models:
-summ_st2 = as.data.frame(capture.output(summary(Refit_TopM2)))
-write.csv(summ_st2, file="Results/steerei/FullModel/refit_Summary_AjustedBestModels_2nd_steerei.csv", row.names = TRUE)
-
-#N. Save as Rdata:
-save(Refit_TopM2, file="./Results/steerei/FullModel/refit_REML_TopM2_steerei.RData")
-
-load(file="./Results/steerei/FullModel/refit_REML_TopM2_steerei.RData")
-
-
-##### 6. CALCULATE AND PLOT THE ESTIMATES -----
-#A. Using best models with REML
-MA_REML = model.avg(Refit_TopM1, Refit_TopM2)
-confint(MA_REML) ## Confidence Intervals for model-averaged coeficients
-as.data.frame(MA_REML$coefficients) ## Mean
-
-#B. Save as dataframe to plot estimates
-df1 = as.data.frame(MA_REML$coefficients[1, ])
-rownames(df1)
-rownames(df1) <- c("Intercept",
-                   "PET",
-                   "Precipitation",
-                   "River Distance",
-                   "Temperature")
-
-df1$term <- rownames(df1)
-colnames(df1) <- c("coef", "term")
-df2 <- bind_cols(df1$term, df1$coef, as.data.frame(confint(MA_REML)[,1]), as.data.frame(confint(MA_REML)[,2]))
-colnames(df2) <- c("term", "estimate", "conf.low", "conf.high" )
-rownames(df2) <- NULL
-head(df2)
-
-#C. Save and load if necessary:
-write.csv(df2, "./Results/steerei/FullModel/refit_model_avg_df_steerei.csv", row.names = F)
-
-#D. Load model average dataframe
-model_avg_estimates = read.csv("./Results/steerei/FullModel/refit_model_avg_df_steerei.csv", h=T)
-head(model_avg_estimates)
-
-#E. Plot
-p1 = ggcoef(model_avg_estimates,
-            conf.int = TRUE,
-            conf.level = 0.95,
-            size = 4.5,
-            vline = TRUE,
-            vline_intercept = "auto",
-            vline_color = "gray50",
-            vline_linetype = "dashed",
-            vline_size = 1,
-            errorbar_color = "black",
-            errorbar_height = 0,
-            errorbar_linetype = "solid",
-            errorbar_size = 0.6,
-            sort = "ascending",
-            mapping = aes_string(y = "term", x = "estimate")) +
-  labs(x = "Estimates", y = "Terms") +
-  theme_bw() +
-  theme(axis.text=element_text(size=14),
-      axis.title=element_text(size=14,face="bold"))
-
-#F. Verify Plot 
-p1
-
-
-#G. Plot confidence intervals of estimates
-pdf("./Results/steerei/Figures/Estimates_avg_df_steerei.pdf", onefile = T)
-p1
-dev.off()
-
-
-##### 7. TEST SIGNIFICANCE OF PREDICTORS - LRT ----
-#A. Models with ML because REML do note provide AIC values
-LRT = drop1(TopM1, test="Chisq")
-LRT
-
-#B. Save Results
-save(LRT, file = "./Results/steerei/FullModel/LRT_TopM1_steerei.RData")
-load(file = "./Results/steerei/FullModel/LRT_TopM1_steerei.RData")
-write.csv(LRT, file="./Results/steerei/FullModel/LRT_Model1_steerei.csv", row.names = TRUE)
-
-#C. TopM2
-LRT = drop1(TopM2, test="Chisq")
-LRT
-
-#D. Save Results
-save(LRT, file = "./Results/steerei/FullModel/LRT_TopM2_steerei.RData")
-load(file = "./Results/steerei/FullModel/LRT_TopM2_steerei.RData")
-write.csv(LRT, file="./Results/steerei/FullModel/LRT_Model2_steerei.csv", row.names = TRUE)
-
-#E. LTR for Nested Models:
-compare_bestmodels = anova.lme(TopM1, TopM2)
-compare_bestmodels
-#F. Save LTR results:
-write.csv(as.data.frame(compare_bestmodels), file="Results/steerei/FullModel/LTR_BestModels_steerei.csv", row.names = TRUE)
-
-
 ##### 8. COEFFICIENT OF DETERMINATION R² -----
 #Not applicable in GLS models, only LME objects
 #ML models and REML models show differences < 0.01 or <1%. I chose the REML for comaparison with Estimates.
@@ -380,6 +250,10 @@ write.csv(as.data.frame(compare_bestmodels), file="Results/steerei/FullModel/LTR
 #A. RΣ2, the proportion of generalized variance explained by the fixed predictors - Jaeger et al. (2017)
 r2_steerei = r2beta(Refit_TopM1, method = 'sgv', partial = 'TRUE')
 r2_steerei
+#               Effect   Rsq upper.CL lower.CL
+#1         Model 0.668    0.732    0.599
+#2 riverdistance 0.565    0.645    0.479
+#3    wetlands_L 0.099    0.194    0.031
 
 #B. Nakagawa and Schielzeth (2013)
 #marginal R² statistic = variance explained by fixed effects
@@ -389,7 +263,7 @@ r2beta(Refit_TopM1, method = 'nsj', partial = 'TRUE')
 #C. Based on Nakagawa et al. (2017)
 MuMIn::r.squaredGLMM(Refit_TopM1)
 #      R2m      R2c
-# 0.023964 0.818  671
+#  0.06557444 0.8566096
 
 #D. Save the results
 write.csv(as.data.frame(r2_steerei), row.names=TRUE, file="Results/steerei/FullModel/refit_BestModel_PartialR2_REML_steerei.csv")
@@ -400,7 +274,7 @@ write.csv(as.data.frame(r2_steerei), row.names=TRUE, file="Results/steerei/FullM
 #A. Load if it is necessary:
 load(file="./Results/steerei/FullModel/BM_steerei.RData")
 
-#A. Calculate variable importance using best models. Need to be more than 1 model:
+#A. Calculate variable importance using best models. Need to be more than 1 model. Not used in this case, because the results will be the same than using uncorrelated models.
 impor_best = importance(BM[BM$delta <= 2, ])
 impor_best
 write.csv(impor_best, "./Results/steerei/FullModel/ImportanceVariables_Best_steerei.csv")
@@ -456,6 +330,64 @@ plot_radar
 dev.off()
 
 
+#F. Calculate variable importance using uncorrlebest models. Need to be more than 1 model:
+impor_best = importance(BM)
+impor_best
+write.csv(impor_best, "./Results/steerei/FullModel/ImportanceVariables_Best_steerei.csv")
+
+#G. Create a dataframe for ploting results:
+impor_best
+
+impor_best2 = impor_best
+df = as.data.frame(impor_best2)
+df = as.data.frame(t(df))
+group = c("Uncorrelated Models")
+df = cbind(group,df)
+df
+
+#C. Reorder like simonsi:
+#steerei order = c( "Habitat", "Productivity", "River", "Euclidean", "Topography")
+names(df)
+df = df[,c(1,3,6,2,5,4)]
+
+#H. Plot radar:
+plot_radar = 
+  ggradar(df,
+          base.size = 2,
+          values.radar = c("0%", "50%", "100%"),
+          axis.labels = c( "Habitat", "Productivity", "River", "Euclidean", "Topography"),
+          grid.min = 0,
+          grid.mid = 0.5,
+          grid.max = 1,
+          grid.label.size = 4,
+          axis.label.size = 5,
+          axis.line.colour = "black",
+          group.line.width = 1.5,
+          group.point.size = 5,
+          group.colours = c("blue"),
+          background.circle.colour = "grey",
+          background.circle.transparency = 0.1,
+          gridline.min.linetype = "dashed",
+          gridline.mid.linetype = "dashed",
+          gridline.max.linetype = "dashed",
+          gridline.min.colour = "black",
+          gridline.mid.colour = "black",
+          gridline.max.colour = "black",
+          legend.title = "",
+          legend.text.size = 12,
+          legend.position = "bottom"
+  )
+
+#I. Verify radar:
+plot_radar
+
+#J. Save
+pdf("./Results/steerei/Figures/RelativePredictorWeight_MLPE_AllVars_steerei_uncorrelated.pdf")
+plot_radar
+dev.off()
+
+
+
 
 #### 10. PLOT UNIVARIATES PREDICTORS USING BEST MODEL ----
 #A. LOAD UNSCALED DATA
@@ -464,99 +396,18 @@ names(DT_unscaled)
 
 #B. Verify variables in Best Model
 TopM1
-#PET + precipitation + riverdistance
+#riverdistance + wetlands_L
 
-#C. Build model with PET ----
-M1 = nlme::lme(RELgen ~ PET,
+#C. Build model with River distance ----
+M1 = nlme::lme(RELgen ~ riverdistance,
                 random = ~ 1|POP,
                 correlation = corMLPE(form = ~ from_ID + to_ID),
                 data = DT_unscaled, method = "REML")
 
 # Decorrelate residulas
 dec_resids = decorltd_res_lme(M1)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
-
-# Change covar in dataframe to plot
-cov = DT_unscaled$PET
-df2plot = as_tibble(data.frame(dec_resids, covar = cov))
-names(df2plot)
-
-
-## Plot relationship
-plotA = ggplot(df2plot, 
-                aes(x = covar, y = pr.fixed)) + 
-  geom_point(aes(y=pr.fixed), alpha=0.3, size = 4) +
-  geom_line(aes(y=fit), size=1) +
-  geom_rug(sides = "b", alpha = 0.02) +
-  ylab("Relatedness (decorrelated)") + 
-  annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
-  xlab("PET Dissimilarity") + 
-  theme_bw() + 
-  theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
-        axis.title.x = element_text(size=15, color = "black", face = "bold")) +
-  theme(axis.text = element_text(face = "bold", color = "black", size = 15))
-
-#Verify
-plotA
-
-pdf("./Results/steerei/Figures/REL_deco_PET_steerei.pdf")
-plotA
-dev.off()
-
-
-
-
-#D. Build model with Precipitation ----
-M2 = nlme::lme(RELgen ~ precipitation,
-                random = ~ 1|POP,
-                correlation = corMLPE(form = ~ from_ID + to_ID),
-                data = DT_unscaled, method = "REML")
-
-# Decorrelate residulas
-dec_resids = decorltd_res_lme(M2)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
-
-# Change covar in dataframe to plot
-cov = DT_unscaled$precipitation
-df2plot = as_tibble(data.frame(dec_resids, covar = cov))
-names(df2plot)
-
-
-# Plot relationship
-plotB = ggplot(df2plot, 
-                aes(x = covar, y = pr.fixed)) + 
-  geom_point(aes(y=pr.fixed), alpha=0.3, size = 4) +
-  geom_line(aes(y=fit), size=1) +
-  geom_rug(sides = "b", alpha = 0.02) +
-  ylab("Relatedness (decorrelated)") + 
-  annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
-  xlab("Precipitation Dissimilarity") + 
-  theme_bw() + 
-  theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
-        axis.title.x = element_text(size=15, color = "black", face = "bold")) +
-  theme(axis.text = element_text(face = "bold", color = "black", size = 15))
-
-#Verify
-plotB
-
-pdf("./Results/steerei/Figures/REL_deco_Precipi_steerei.pdf")
-plotB
-dev.off()
-
-
-
-#E. Build model with River Distance ----
-M3 = nlme::lme(RELgen ~ riverdistance,
-                random = ~ 1|POP,
-                correlation = corMLPE(form = ~ from_ID + to_ID),
-                data = DT_unscaled, method = "REML")
-
-# Decorrelate residulas
-dec_resids = decorltd_res_lme(M3)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
 
 # Change covar in dataframe to plot
 cov = DT_unscaled$riverdistance
@@ -565,7 +416,7 @@ names(df2plot)
 
 
 ## Plot relationship
-plotC = ggplot(df2plot, 
+plotA = ggplot(df2plot, 
                 aes(x = covar, y = pr.fixed)) + 
   geom_point(aes(y=pr.fixed), alpha=0.3, size = 4) +
   geom_line(aes(y=fit), size=1) +
@@ -579,14 +430,55 @@ plotC = ggplot(df2plot,
   theme(axis.text = element_text(face = "bold", color = "black", size = 15))
 
 #Verify
-plotC
+plotA
 
-pdf("./Results/steerei/Figures/REL_deco_RiverDis_steerei.pdf")
-plotC
+pdf("./Results/steerei/Figures/REL_deco_RiverDistance_steerei.pdf")
+plotA
 dev.off()
 
 
-#F. Build model with Eucliadean Distance ----
+
+
+#D. Build model with Habitat ----
+M2 = nlme::lme(RELgen ~ wetlands_L,
+                random = ~ 1|POP,
+                correlation = corMLPE(form = ~ from_ID + to_ID),
+                data = DT_unscaled, method = "REML")
+
+# Decorrelate residulas
+dec_resids = decorltd_res_lme(M2)
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
+
+# Change covar in dataframe to plot
+cov = DT_unscaled$wetlands_L
+df2plot = as_tibble(data.frame(dec_resids, covar = cov))
+names(df2plot)
+
+
+# Plot relationship
+plotB = ggplot(df2plot, 
+                aes(x = covar, y = pr.fixed)) + 
+  geom_point(aes(y=pr.fixed), alpha=0.3, size = 4) +
+  geom_line(aes(y=fit), size=1) +
+  geom_rug(sides = "b", alpha = 0.02) +
+  ylab("Relatedness (decorrelated)") + 
+  annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
+  xlab("Habitat Resistance") + 
+  theme_bw() + 
+  theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
+        axis.title.x = element_text(size=15, color = "black", face = "bold")) +
+  theme(axis.text = element_text(face = "bold", color = "black", size = 15))
+
+#Verify
+plotB
+
+pdf("./Results/steerei/Figures/REL_deco_Habitat_steerei.pdf")
+plotB
+dev.off()
+
+
+#E. Build model with Eucliadean Distance ----
 M4 = nlme::lme(RELgen ~ eucl_dist,
                 random = ~ 1|POP,
                 correlation = corMLPE(form = ~ from_ID + to_ID),
@@ -594,8 +486,8 @@ M4 = nlme::lme(RELgen ~ eucl_dist,
 
 ## Decorrelate residulas
 dec_resids = decorltd_res_lme(M4)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
 
 ## Change covar in dataframe to plot
 cov = DT_unscaled$eucl_dist
@@ -621,44 +513,6 @@ plotD
 
 pdf("./Results/steerei/Figures/REL_deco_EuclideanDis_steerei.pdf")
 plotD
-dev.off()
-
-
-#G. Build model with Temperature
-M5 = nlme::lme(RELgen ~ temperature,
-                random = ~ 1|POP,
-                correlation = corMLPE(form = ~ from_ID + to_ID),
-                data = DT_unscaled, method = "REML")
-
-## Decorrelate residulas
-dec_resids = decorltd_res_lme(M5)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
-
-## Change covar in dataframe to plot
-cov = DT_unscaled$temperature
-df2plot = as_tibble(data.frame(dec_resids, covar = cov))
-names(df2plot)
-
-
-## Plot relationship
-plotE = ggplot(df2plot, 
-                aes(x = covar, y = pr.fixed)) + 
-  geom_point(aes(y=pr.fixed), alpha=0.3, size = 4) +
-  geom_line(aes(y=fit), size=1) +
-  geom_rug(sides = "b", alpha = 0.02) +
-  ylab("Relatedness (decorrelated)") + 
-  annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
-  xlab("Temperature Dissimilarity") + 
-  theme_bw() + 
-  theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
-        axis.title.x = element_text(size=15, color = "black", face = "bold")) +
-  theme(axis.text = element_text(face = "bold", color = "black", size = 15))
-
-plotE
-
-pdf("./Results/steerei/Figures/REL_deco_Temperature_steerei.pdf")
-plotE
 dev.off()
 
 #END
