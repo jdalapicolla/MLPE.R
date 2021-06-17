@@ -1,5 +1,5 @@
 #####################  LANDSCAPE GENOMICS TUTORIAL   ##################
-###################   STEP 04: MLPE MODELS WITH GLS  ##################
+########################   STEP 03: MLPE MODELS  ######################
 
 ### Script prepared by Jeronymo Dalapicolla, Jamille C. Veiga, Carolina S. Carvalho, Luciana C. Resende-Moreira, and Rodolfo Jaffé ###
 
@@ -23,7 +23,6 @@ library(GGally)
 library(reshape2)
 library(gridExtra)
 library(RColorBrewer)
-library(ggradar)
 library(scales)
 
 ### Load auxiliary functions:
@@ -70,7 +69,7 @@ decorltd_res_gls = function(object){
   return(data.frame(pr=fit+val,fit=fit,raw=raw,rawfit=rawfit))
 }
 
-# Calculate decorrelated model residuals for LME objects
+# For LME objects
 decorltd_res_lme = function(object){
   object$fitted
   object$residuals
@@ -96,17 +95,18 @@ mlpe_simonsi = read.csv("Metafiles/MLPE_table_simonsi.csv", row.names = 1)
 head(mlpe_simonsi)
 
 #B. Scale predictors/variables for use in models
-mlpe_simonsi[, 5:15] = as.data.frame(scale(mlpe_simonsi[, 5:15]))
+mlpe_simonsi[, 5:(length(mlpe_simonsi)-1)] = as.data.frame(scale(mlpe_simonsi[, 5:(length(mlpe_simonsi)-1)]))
 head(mlpe_simonsi)
 
 #C. Creating formula for MLPE:
 #select variables for models:
-vars_mlpe_st = names(mlpe_simonsi)[5:15]
+vars_mlpe_st = names(mlpe_simonsi)[5:(length(mlpe_simonsi)-1)]
 vars_mlpe_st
-#use REL distance plus varaibles of your choice keeping one for geographic distance (Null Model):
-vars_mlpe_st_rel = vars_mlpe_st[c(1:6,10)]
+
+#use REL distance plus variables of your choice keeping the geographic distance (Null Model):
+vars_mlpe_st_rel = vars_mlpe_st[c(1:5)]
 mlpe_formula_rel_st = as.formula(paste("RELgen ~ ",paste(vars_mlpe_st_rel, collapse = " + "),sep = ""))
-mlpe_formula_rel_st #7 variables
+mlpe_formula_rel_st #5 variables
 
 
 
@@ -123,13 +123,10 @@ summary(Fullmodel)
 RES <- residuals(Fullmodel, type="normalized")
 FIT <- fitted(Fullmodel)
 plot(FIT, RES) ; abline(0,0, col="red") #OK
-acf(RES) #there is spatial autocorrelation in residuals
+acf(RES) #there is no spatial autocorrelation in residuals
 
 
-
-
-###### 3. REFIT FULL MODELS WITH NESTED MLPE ---- 
-#NOT WORKING FOR LME YET
+##3. TESTING THE GLS MODEL BECAUSE WE HAVE ONLY ONE POPULATION ----
 #A. Compare LME with 1 population to GLS:
 #LME
 Fullmodel
@@ -145,13 +142,13 @@ summary(Fullmodel_2)
 RES <- residuals(Fullmodel_2, type="normalized")
 FIT <- fitted(Fullmodel_2)
 plot(FIT, RES) ; abline(0,0, col="red")
-acf(RES)
+acf(RES) ##there is no spatial autocorrelation in residuals
 
 #B. Comparing LME and GLS results by LTR:
 compare_bestmodels = anova.lme(Fullmodel, Fullmodel_2)
 compare_bestmodels #models are not different (p = 0.999)
 
-#C. Compare Importance of Variables
+#C. Compare Importance of Variables. Maximum of 9 variables (15 observation by predictor)
 #LME:
 Allmodels = dredge(Fullmodel, rank = "AIC", m.lim=c(0, 9), extra= c(max.r))
 NCM = get.models(Allmodels, subset = max.r<=0.6)
@@ -167,55 +164,56 @@ impor_uncor_gls = importance(BM)
 #Verify
 impor_uncor_lme
 impor_uncor_gls
-# variation less than 1%. 
-
-#D. Sort data so we can see acf better
-mlpe_simonsi2 = mlpe_simonsi[order(mlpe_simonsi$from_ID, mlpe_simonsi$to_ID),]
-
-#E. Identify which individuals are from same location based on pairwise geographic distance
-ulab = unique(c(as.character(mlpe_simonsi2$from_ID), as.character(mlpe_simonsi2$to_ID)))
-dis = matrix(0, length(ulab), length(ulab))
-colnames(dis) = ulab
-rownames(dis) = ulab
-dis[1:10, 1:10]
-
-for(i in 1:nrow(mlpe_simonsi2)){
-  dis[mlpe_simonsi2$from_ID[i], mlpe_simonsi2$to_ID[i]] = 
-    dis[mlpe_simonsi2$to_ID[i],mlpe_simonsi2$from_ID[i]] = 
-    mlpe_simonsi2$eucl_dist[i]
-  location = cutree(hclust(as.dist(dis)), h=0) #assign individuals to unique locations
-}
-
-#F. Plot dendogram
-location
-plot(hclust(as.dist(dis)), h=0)
+# variation less than 1%. So we keep the lme to compare to P. steerei that needs lme! 
 
 
-#G. Run nested MLPE --- 
-Model = nlme::gls(mlpe_formula_rel_st,
-                   correlation = corNMLPE2(form = ~ from_ID + to_ID, 
-                                           clusters = location),
-                  data = mlpe_simonsi2, method = "ML")
+#4. REFIT TO NESTED MLPE IF YOU HAVE SPATIAL STRUCTURE IN RESIDUALS
+#A. Sort data so we can see acf better
+#mlpe_simonsi2 = mlpe_simonsi[order(mlpe_simonsi$from_ID, mlpe_simonsi$to_ID),]
 
-#H. Check residuals  
-RES <- residuals(Model, type="normalized")
-FIT <- fitted(Model)
-plot(FIT, RES) ; abline(0,0, col="red") #OK
-acf(RES) #OK
+#B. Identify which individuals are from same location based on pairwise geographic distance
+#ulab = unique(c(as.character(mlpe_simonsi2$from_ID), as.character(mlpe_simonsi2$to_ID)))
+#dis = matrix(0, length(ulab), length(ulab))
+#colnames(dis) = ulab
+#rownames(dis) = ulab
+#dis[1:10, 1:10]
 
-#I. Rename Nested model as FullModel
-Fullmodel = Model
+#for(i in 1:nrow(mlpe_simonsi2)){
+ # dis[mlpe_simonsi2$from_ID[i], mlpe_simonsi2$to_ID[i]] = 
+  #  dis[mlpe_simonsi2$to_ID[i],mlpe_simonsi2$from_ID[i]] = 
+  #  mlpe_simonsi2$eucl_dist[i]
+  #location = cutree(hclust(as.dist(dis)), h=0) #assign individuals to unique locations
+#}
 
+#C. Plot dendogram
+#location
+#plot(hclust(as.dist(dis)), h=0)
+
+
+#D. Run nested MLPE --- 
+#Model = nlme::gls(mlpe_formula_rel_st,
+ #                  correlation = corNMLPE2(form = ~ from_ID + to_ID, 
+  #                                         clusters = location),
+   #               data = mlpe_simonsi2, method = "ML")
+
+#E. Check residuals  
+#RES <- residuals(Model, type="normalized")
+#FIT <- fitted(Model)
+#plot(FIT, RES) ; abline(0,0, col="red") #OK
+#acf(RES) #small spatial correlation
 
 
 
 
 ##### 4. CREATE A CLUSTER TO RUN MLPE IN PARALLEL ------
+#A. Choose the full model to continue the analysis: LME (Fullmodel), GLS (Fullmodel_2), or Nested MLPE (Model). In this case, LME (if you choose gls and other some fuctions habe to be adapted such as the r² estimates)
+Fullmodel = Fullmodel
+
 #A. Make cluster
 cluster = makeCluster(4, type = "SOCK")  ## also need snow installed
 
 #B. Use clusterExport to send data to global environment (aka ‘workspace’) of each node. 
-clusterExport(cluster, c("mlpe_simonsi2", "location"))
+clusterExport(cluster, c("mlpe_simonsi")) #add other objects if you need
 
 #C. Load packages in the cluster
 clusterEvalQ(cluster,
@@ -226,7 +224,7 @@ clusterEvalQ(cluster,
 
 ##### 5. RUN MODEL SELECTION WITH PARALLELIZED DREDGE ---- 
 #A. Check maximum correlation
-max.r(Fullmodel) ## 0.9768368
+max.r(Fullmodel) ## 0.9966734
 
 #B. Specify the number of predictor variables and including the max.r function. 15 observations to each predictor:
 max_var = length(mlpe_simonsi[,1])/15
@@ -244,10 +242,10 @@ end_time = Sys.time()
 start_time1 = start_time
 end_time1 = end_time
 diff1 = end_time - start_time
-diff1 ##1.061986 secs
+diff1 ##7.350864 secs
 
 #E. Number of models
-nrow(Allmodels) ## 128
+nrow(Allmodels) ## 32
 
 #F. Save and load All Models:
 save(Allmodels, file="./Results/simonsi/FullModel/Allmodels_simonsi.RData")
@@ -257,7 +255,7 @@ load(file = "./Results/simonsi/FullModel/Allmodels_simonsi.RData")
 NCM = get.models(Allmodels, subset = max.r <= 0.6, cluster)
 
 #H. Number of Not Collinear models
-length(NCM) #47
+length(NCM) #16
 
 #I. Save and load Not Collinear models
 save(NCM, file="./Results/simonsi/FullModel/NCM_simonsi.RData")
@@ -265,7 +263,7 @@ load(file="./Results/simonsi/FullModel/NCM_simonsi.RData")
 
 #J. Select Best Models using AIC
 BM = model.sel(NCM, rank=AIC)
-nrow(BM) #47
+nrow(BM) #16
 #Check best models
 best_models = BM[BM$delta <= 2, ]
 best_models
@@ -281,7 +279,7 @@ head(df_model_sel)
 write.csv(df_model_sel, "./Results/simonsi/FullModel/ModelsSelection_AIC_simonsi.csv", row.names = T)
 
 
-  #M. Save best models tables
+#M. Save best models tables
 as.data.frame(best_models)
 write.csv(as.data.frame(best_models), "./Results/simonsi/FullModel/BestModels_AIC_simonsi.csv", row.names = F)
 
@@ -293,15 +291,15 @@ write.csv(as.data.frame(best_models), "./Results/simonsi/FullModel/BestModels_AI
 #A. TopM1 ----
 TopM1 = get.models(BM, subset = 1)[[1]]
 summary(TopM1)
-intervals(TopM1)
+intervals(TopM1, which = "fixed")
 TopM1
 
 #B. Refit TopM1
-Refit_TopM1 = nlme::gls(RELgen ~ PET + temperature + wetlands_VH,
-                         correlation = corNMLPE2(form = ~ from_ID + to_ID,
-                                               clusters = location),
-                         data = mlpe_simonsi2,
-                         method = "REML") #get accurated estimates
+Refit_TopM1 = nlme::lme(RELgen ~ productivity_dist + wetlands_L,
+                        random = ~1|POP,
+                        correlation = corMLPE(form = ~ from_ID + to_ID),
+                        data = mlpe_simonsi,
+                        method = "REML") #best estimates
 summary(Refit_TopM1)
 
 #C. Check autocorrelation of residuals
@@ -311,9 +309,8 @@ plot(FIT, RES) ; abline(0,0, col="red") #ok
 acf(RES) #ok
 
 #D. Plot predictors x residuals
-plot(mlpe_simonsi2$PET, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$temperature, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$wetlands_VH, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_simonsi$productivity_dist, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_simonsi$wetlands_L, RES) ; abline(0,0, col="red") #ok
 
 #E. Save ACF graph:
 acf(resid(Refit_TopM1,type='normalized')) ## Spatial dependence pattern
@@ -334,16 +331,15 @@ save(Refit_TopM1, file="./Results/simonsi/FullModel/refit_REML_TopM1_simonsi.RDa
 #H. TopM2 ----
 TopM2 <- get.models(BM, subset = 2)[[1]]
 summary(TopM2)
-intervals(TopM2)
+intervals(TopM2, which = "fixed")
 TopM2
 
 #I. Refit TopM2
-Refit_TopM2 = nlme::gls(RELgen ~ PET + precipitation + temperature + wetlands_VH,
-                         correlation = corNMLPE2(form = ~ from_ID + to_ID,
-                                                 clusters = location),
-                         data = mlpe_simonsi2,
-                         method = "REML") #get accurated estimates
-
+Refit_TopM2 = nlme::lme(RELgen ~ wetlands_L,
+                        random = ~1|POP,
+                        correlation = corMLPE(form = ~ from_ID + to_ID),
+                        data = mlpe_simonsi,
+                        method = "REML") #best estimates
 summary(Refit_TopM2)
 
 #J. Check autocorrelation of residuals
@@ -353,10 +349,7 @@ plot(FIT, RES) ; abline(0,0, col="red") #ok
 acf(RES) #ok
 
 #K. Plot predictors x residuals
-plot(mlpe_simonsi2$PET, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$wetlands_VH, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$precipitation, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$temperature, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_simonsi$wetlands_L, RES) ; abline(0,0, col="red") #ok
 
 #L. Save ACF graph:
 acf(resid(Refit_TopM2,type='normalized')) ## Spatial dependence pattern
@@ -372,51 +365,91 @@ write.csv(summ_st2, file="Results/simonsi/FullModel/refit_Summary_AjustedBestMod
 save(Refit_TopM2, file="./Results/simonsi/FullModel/refit_REML_TopM2_simonsi.RData")
 
 
-#H. TopM3 ----
+#O. TopM3 ----
 TopM3 = get.models(BM, subset = 3)[[1]]
 summary(TopM3)
-intervals(TopM3)
+intervals(TopM3, which = "fixed")
 TopM3
 
-#O. Refit TopM3
-Refit_TopM3 = nlme::gls(RELgen ~ PET + riverdistance + temperature + wetlands_VH,
-                        correlation = corNMLPE2(form = ~ from_ID + to_ID,
-                                                clusters = location),
-                        data = mlpe_simonsi2,
-                        method = "REML") #get accurated estimates
-
+#P. Refit TopM3
+Refit_TopM3 = nlme::lme(RELgen ~ wetlands_L + riverdistance,
+                                     random = ~1|POP,
+                                     correlation = corMLPE(form = ~ from_ID + to_ID),
+                                     data = mlpe_simonsi,
+                                     method = "REML") #best estimates
 summary(Refit_TopM3)
 
-#J. Check autocorrelation of residuals
+#Q. Check autocorrelation of residuals
 RES <- residuals(Refit_TopM3, type="normalized")
 FIT <- fitted(Refit_TopM3)
 plot(FIT, RES) ; abline(0,0, col="red") #ok
 acf(RES) #ok
 
-#K. Plot predictors x residuals
-plot(mlpe_simonsi2$PET, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$wetlands_VH, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$riverdistance, RES) ; abline(0,0, col="red") #ok
-plot(mlpe_simonsi2$temperature, RES) ; abline(0,0, col="red") #ok
+#R. Plot predictors x residuals
+plot(mlpe_simonsi$wetlands_L, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_simonsi$riverdistance, RES) ; abline(0,0, col="red") #ok
 
-#L. Save ACF graph:
+
+#S. Save ACF graph:
 acf(resid(Refit_TopM3,type='normalized')) ## Spatial dependence pattern
 pdf("Results/simonsi/Figures/refit_ACF_LME_simonsi_TopM3.pdf", onefile = T)
-acf(resid(Refit_TopM2,type='normalized'))
+acf(resid(Refit_TopM3,type='normalized'))
 dev.off()
 
-#M. Summary for Best Models:
+#T. Summary for Best Models:
 summ_st3 = as.data.frame(capture.output(summary(Refit_TopM3)))
 write.csv(summ_st3, file="Results/simonsi/FullModel/refit_Summary_AjustedBestModels_3rd_simonsi.csv", row.names = TRUE)
 
-#N. Save as Rdata:
+#U. Save as Rdata:
 save(Refit_TopM3, file="./Results/simonsi/FullModel/refit_REML_TopM3_simonsi.RData")
+
+
+
+#V. TopM4 ----
+TopM4 = get.models(BM, subset = 4)[[1]]
+summary(TopM4)
+intervals(TopM4, which = "fixed")
+TopM4
+
+
+#V. Refit TopM4
+Refit_TopM4 = nlme::lme(RELgen ~ wetlands_L + riverdistance + productivity_dist,
+                        random = ~1|POP,
+                        correlation = corMLPE(form = ~ from_ID + to_ID),
+                        data = mlpe_simonsi,
+                        method = "REML") #best estimates
+summary(Refit_TopM4)
+
+#J. Check autocorrelation of residuals
+RES <- residuals(Refit_TopM4, type="normalized")
+FIT <- fitted(Refit_TopM4)
+plot(FIT, RES) ; abline(0,0, col="red") #ok
+acf(RES) #ok
+
+#K. Plot predictors x residuals
+plot(mlpe_simonsi$wetlands_L, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_simonsi$riverdistance, RES) ; abline(0,0, col="red") #ok
+plot(mlpe_simonsi$productivity_dist, RES) ; abline(0,0, col="red") #ok
+
+
+#L. Save ACF graph:
+acf(resid(Refit_TopM4,type='normalized')) ## Spatial dependence pattern
+pdf("Results/simonsi/Figures/refit_ACF_LME_simonsi_TopM4.pdf", onefile = T)
+acf(resid(Refit_TopM4,type='normalized'))
+dev.off()
+
+#M. Summary for Best Models:
+summ_st4 = as.data.frame(capture.output(summary(Refit_TopM4)))
+write.csv(summ_st4, file="Results/simonsi/FullModel/refit_Summary_AjustedBestModels_4TH_simonsi.csv", row.names = TRUE)
+
+#N. Save as Rdata:
+save(Refit_TopM4, file="./Results/simonsi/FullModel/refit_REML_TopM4_simonsi.RData")
 
 
 
 ##### 7. CALCULATE AND PLOT THE ESTIMATES -----
 #A. Using best models with REML
-MA_REML = model.avg(Refit_TopM1, Refit_TopM2, Refit_TopM3)
+MA_REML = model.avg(Refit_TopM1, Refit_TopM2, Refit_TopM3, Refit_TopM4)
 confint(MA_REML) ## Confidence Intervals for model-averaged coeficients
 as.data.frame(MA_REML$coefficients) ## Mean
 
@@ -424,10 +457,8 @@ as.data.frame(MA_REML$coefficients) ## Mean
 df1 = as.data.frame(MA_REML$coefficients[1, ])
 rownames(df1)
 rownames(df1) <- c("Intercept",
-                   "PET",
-                   "Temperature",
                    "Habitat",
-                   "Precipitation",
+                   "Productivity",
                    "River Distance")
 
 df1$term <- rownames(df1)
@@ -499,53 +530,69 @@ write.csv(LRT, file="./Results/simonsi/FullModel/LRT_Model2_simonsi.csv", row.na
 LRT = drop1(TopM3, test="Chisq")
 LRT
 
-#D. Save Results
+#F. Save Results
 save(LRT, file = "./Results/simonsi/FullModel/LRT_TopM3_simonsi.RData")
 load(file = "./Results/simonsi/FullModel/LRT_TopM3_simonsi.RData")
 write.csv(LRT, file="./Results/simonsi/FullModel/LRT_Model3_simonsi.csv", row.names = TRUE)
 
 
+#G. TopM4
+LRT = drop1(TopM4, test="Chisq")
+LRT
+
+#F. Save Results
+save(LRT, file = "./Results/simonsi/FullModel/LRT_TopM4_simonsi.RData")
+load(file = "./Results/simonsi/FullModel/LRT_TopM4_simonsi.RData")
+write.csv(LRT, file="./Results/simonsi/FullModel/LRT_Model4_simonsi.csv", row.names = TRUE)
+
 
 
 #E. LTR for Nested Models:
 compare_bestmodels = anova.lme(TopM1, TopM2)
-compare_bestmodels # p = 0.3614
-compare_bestmodels2 = anova.lme(TopM1, TopM3)
-compare_bestmodels2 #p = 0.5173
+compare_bestmodels # L.Ratio = 2.08432 p = 0.1488
+compare_bestmodels2 = anova.lme(TopM3, TopM2)
+compare_bestmodels2 #L.Ratio = 0.2794834 p = 0.597
+compare_bestmodels2 = anova.lme(TopM4, TopM1)
+compare_bestmodels2 #L.Ratio = 0.04543168 p = 0.8312
+compare_bestmodels2 = anova.lme(TopM4, TopM2)
+compare_bestmodels2 #L.Ratio = 2.129751 p = 0.3448
+compare_bestmodels2 = anova.lme(TopM4, TopM3)
+compare_bestmodels2 #L.Ratio = 1.850268 p = 0.1738
+
 
 #F. Save LTR results:
-write.csv(as.data.frame(compare_bestmodels), file="Results/simonsi/FullModel/LTR_BestModels_simonsi.csv", row.names = TRUE)
-write.csv(as.data.frame(compare_bestmodels2), file="Results/simonsi/FullModel/LTR_BestModels_simonsi.csv", row.names = TRUE)
-
+#write.csv(as.data.frame(compare_bestmodels), file="Results/simonsi/FullModel/LTR_BestModels_simonsi.csv", row.names = TRUE)
+#write.csv(as.data.frame(compare_bestmodels2), file="Results/simonsi/FullModel/LTR_BestModels_simonsi.csv", row.names = TRUE)
 
 
 
 
 ##### 9. COEFFICIENT OF DETERMINATION R² -----
 #Not applicable in GLS models, only LME objects
-#ML models and REML models show differences < 0.01 or <1%. I chose the REML for comaparison with Estimates.
-Refit_TopM1_lme = nlme::lme(RELgen ~ PET + temperature + wetlands_VH,
-                            random = ~1|POP,
-                        correlation = corMLPE(form = ~ from_ID + to_ID),
-                        data = mlpe_simonsi,
-                        method = "REML") #get accurated estimates
-summary(Refit_TopM1_lme)
-#rho = 0.04896
+#ML models and REML models show differences < 0.01 or <1%. I chose the REML for comparison with Estimates.
+Refit_TopM1_lme = Refit_TopM2
 
 #A. RΣ2, the proportion of generalized variance explained by the fixed predictors - Jaeger et al. (2017)
 r2_simonsi = r2beta(Refit_TopM1_lme, method = 'sgv', partial = 'TRUE')
 r2_simonsi
+
+#              Effect   Rsq upper.CL lower.CL
+#      Model    0.349    0.467    0.234
+#  wetlands_L   0.349    0.467    0.234
 
 
 #B. Nakagawa and Schielzeth (2013)
 #marginal R² statistic = variance explained by fixed effects
 #conditional R² statistic variance explained by the entire model (fixed & random effects)
 r2beta(Refit_TopM1_lme, method = 'nsj', partial = 'TRUE')
+#              Effect   Rsq upper.CL lower.CL
+#      Model    0.338    0.457    0.223
+#  wetlands_L   0.338    0.457    0.223
 
 #C. Based on Nakagawa et al. (2017)
 MuMIn::r.squaredGLMM(Refit_TopM1_lme)
 #      R2m      R2c
-# 0.4122305 0.4414367
+# 0.3380082 0.3709024
 
 #D. Save the results
 write.csv(as.data.frame(r2_simonsi), row.names=TRUE, file="Results/simonsi/FullModel/refit_BestModel_PartialR2_REML_simonsi.csv")
@@ -567,21 +614,21 @@ impor_best2 = impor_best
 df = as.data.frame(impor_best2)
 df[nrow(df) + 1,] = 0
 df[nrow(df) + 1,] = 0
-row.names(df)[6:7] = c("topography", "eucl_dist")
+row.names(df)[4:5] = c("topography", "eucl_dist")
 df = as.data.frame(t(df))
 group = c("Best Models")
 df = cbind(group,df)
-
+df
 #C. Reorder like steerei:
-#steerei order = c( "PET", "Precipitation", "River", "Temperature", "Habitat", "Topography", "Euclidean")
-df = df[,c(1,2,5,6,3,4,7,8)]
+# order = c( "Habitat", "Productivity", "River", "Euclidean", "Topography")
+#df = df[,c(1,2,5,6,3,4,7,8)]
 
 #C. Plot radar:
 plot_radar = 
   ggradar(df,
           base.size = 2,
           values.radar = c("0%", "50%", "100%"),
-          axis.labels = c( "PET", "Precipitation", "River", "Temperature", "Habitat", "Topography", "Euclidean"),
+          axis.labels = c( "Habitat", "Productivity", "River",  "Euclidean", "Topography"),
           grid.min = 0,
           grid.mid = 0.5,
           grid.max = 1,
@@ -614,28 +661,90 @@ dev.off()
 
 
 
+
+#A. Calculate variable importance using all uncorrelated models. Need to be more than 1 model:
+impor_best = importance(BM)
+impor_best
+write.csv(impor_best, "./Results/simonsi/FullModel/ImportanceVariables_Uncorrelated_simonsi.csv")
+
+#B. Create a dataframe for ploting results:
+impor_best
+impor_best2 = impor_best
+df = as.data.frame(impor_best2)
+#df[nrow(df) + 1,] = 0
+#df[nrow(df) + 1,] = 0
+#row.names(df)[4:5] = c("topography", "eucl_dist")
+df = as.data.frame(t(df))
+group = c("Uncorrelated Models")
+df = cbind(group,df)
+df
+#C. Reorder like steerei:
+#steerei order = c( "Habitat", "Productivity", "River",  "Euclidean", "Topography")
+#df = df[,c(1,2,5,6,3,4,7,8)]
+
+#C. Plot radar:
+plot_radar = 
+  ggradar(df,
+          base.size = 2,
+          values.radar = c("0%", "50%", "100%"),
+          axis.labels = c( "Habitat", "Productivity", "River", "Euclidean", "Topography"),
+          grid.min = 0,
+          grid.mid = 0.5,
+          grid.max = 1,
+          grid.label.size = 4,
+          axis.label.size = 5,
+          axis.line.colour = "black",
+          group.line.width = 1.5,
+          group.point.size = 5,
+          group.colours = c("blue"),
+          background.circle.colour = "grey",
+          background.circle.transparency = 0.1,
+          gridline.min.linetype = "dashed",
+          gridline.mid.linetype = "dashed",
+          gridline.max.linetype = "dashed",
+          gridline.min.colour = "black",
+          gridline.mid.colour = "black",
+          gridline.max.colour = "black",
+          legend.title = "",
+          legend.text.size = 12,
+          legend.position = "bottom"
+  )
+
+#D. Verify radar:
+plot_radar
+
+#E. Save
+pdf("./Results/simonsi/Figures/RelativePredictorWeight_MLPE_AllVars_simonsi_uncorrelated.pdf")
+plot_radar
+dev.off()
+
+
+
+
+
+
 #### 11. PLOT UNIVARIATES PREDICTORS USING BEST MODEL ----
 #A. LOAD UNSCALED DATA
 DT_unscaled =  read.csv("Metafiles/MLPE_table_simonsi.csv", row.names = 1)
 names(DT_unscaled)
 
 #B. Verify variables in Best Model
-TopM1
-#PET + temperature + wetlands_VH
+TopM2
+# wetlands_L
 
-#C. Build model with PET ----
-M1 = nlme::lme(RELgen ~ PET,
+#C. Build model with Habitat ----
+M1 = nlme::lme(RELgen ~ wetlands_L,
                random = ~1|POP,
                correlation = corMLPE(form = ~ from_ID + to_ID),
                data = DT_unscaled, method = "REML")
 
-# Decorrelate residulas
+# Decorrelated residuals
 dec_resids = decorltd_res_lme(M1)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
 
 # Change covar in dataframe to plot
-cov = DT_unscaled$PET
+cov = DT_unscaled$wetlands_L
 df2plot = as_tibble(data.frame(dec_resids, covar = cov))
 names(df2plot)
 
@@ -648,7 +757,7 @@ plotA = ggplot(df2plot,
   geom_rug(sides = "b", alpha = 0.02) +
   ylab("Relatedness (decorrelated)") + 
   annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
-  xlab("PET Dissimilarity") + 
+  xlab("Habitat Resistance") + 
   theme_bw() + 
   theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
         axis.title.x = element_text(size=15, color = "black", face = "bold")) +
@@ -657,26 +766,26 @@ plotA = ggplot(df2plot,
 #Verify
 plotA
 
-pdf("./Results/simonsi/Figures/REL_deco_PET_simonsi.pdf")
+pdf("./Results/simonsi/Figures/REL_deco_Habitat_simonsi.pdf")
 plotA
 dev.off()
 
 
 
 
-#D. Build model with Temperature ----
-M2 = nlme::lme(RELgen ~ temperature,
+#D. Build model with Productivity ----
+M2 = nlme::lme(RELgen ~ productivity_dist,
                random = ~ 1|POP,
                correlation = corMLPE(form = ~ from_ID + to_ID),
                data = DT_unscaled, method = "REML")
 
 # Decorrelate residulas
 dec_resids = decorltd_res_lme(M2)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
 
 # Change covar in dataframe to plot
-cov = DT_unscaled$temperature
+cov = DT_unscaled$productivity_dist
 df2plot = as_tibble(data.frame(dec_resids, covar = cov))
 names(df2plot)
 
@@ -689,7 +798,7 @@ plotB = ggplot(df2plot,
   geom_rug(sides = "b", alpha = 0.02) +
   ylab("Relatedness (decorrelated)") + 
   annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
-  xlab("Temperature Dissimilarity") + 
+  xlab("Productivity Resistance") + 
   theme_bw() + 
   theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
         axis.title.x = element_text(size=15, color = "black", face = "bold")) +
@@ -698,30 +807,31 @@ plotB = ggplot(df2plot,
 #Verify
 plotB
 
-pdf("./Results/simonsi/Figures/REL_deco_tempera_simonsi.pdf")
+pdf("./Results/simonsi/Figures/REL_deco_Productivity_simonsi.pdf")
 plotB
 dev.off()
 
 
 
-#E. Build model with Habitat ----
-M3 = nlme::lme(RELgen ~ wetlands_VH,
+
+#E. Build model with River Distance ----
+M2 = nlme::lme(RELgen ~ riverdistance,
                random = ~ 1|POP,
                correlation = corMLPE(form = ~ from_ID + to_ID),
                data = DT_unscaled, method = "REML")
 
-# Decorrelate residuals
-dec_resids = decorltd_res_lme(M3)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
+# Decorrelate residulas
+dec_resids = decorltd_res_lme(M2)
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
 
 # Change covar in dataframe to plot
-cov = DT_unscaled$wetlands_VH
+cov = DT_unscaled$riverdistance
 df2plot = as_tibble(data.frame(dec_resids, covar = cov))
 names(df2plot)
 
 
-## Plot relationship
+# Plot relationship
 plotC = ggplot(df2plot, 
                aes(x = covar, y = pr.fixed)) + 
   geom_point(aes(y=pr.fixed), alpha=0.3, size = 4) +
@@ -729,7 +839,7 @@ plotC = ggplot(df2plot,
   geom_rug(sides = "b", alpha = 0.02) +
   ylab("Relatedness (decorrelated)") + 
   annotate("text", x=c(5), y=c(15),label=c(""), size=7) +
-  xlab("Habitat Distance") + 
+  xlab("River Distance") + 
   theme_bw() + 
   theme(axis.title.y = element_text(size=15, color = "black", face = "bold"),
         axis.title.x = element_text(size=15, color = "black", face = "bold")) +
@@ -738,7 +848,7 @@ plotC = ggplot(df2plot,
 #Verify
 plotC
 
-pdf("./Results/simonsi/Figures/REL_deco_HabitatDistan_simonsi.pdf")
+pdf("./Results/simonsi/Figures/REL_deco_River_simonsi.pdf")
 plotC
 dev.off()
 
@@ -751,8 +861,8 @@ M4 = nlme::lme(RELgen ~ eucl_dist,
 
 ## Decorrelate residulas
 dec_resids = decorltd_res_lme(M4)
-dec_resids$dist_interval = DT_unscaled$dist_interval
-dec_resids$geoDist = DT_unscaled$geoDist
+#dec_resids$dist_interval = DT_unscaled$dist_interval
+dec_resids$geoDist = DT_unscaled$eucl_dist
 
 ## Change covar in dataframe to plot
 cov = DT_unscaled$eucl_dist
